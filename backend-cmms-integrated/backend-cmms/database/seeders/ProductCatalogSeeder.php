@@ -40,15 +40,17 @@ class ProductCatalogSeeder extends Seeder
         ] as $key => [$name, $monthlyPrice, $maxUsers, $maxAssets, $maxSites, $hasPm]) {
             $planId = $this->upsert('plans', ['key' => $key, 'version_number' => 1], [
                 'name' => $name,
-                'description' => 'Initial draft; price and limits remain editable by SUPER_ADMIN until published.',
+                'description' => 'Paket '.$name.' — dapat diubah oleh SUPER_ADMIN kapan saja.',
                 'monthly_price' => $monthlyPrice,
                 'annual_price' => null,
                 'currency_code' => 'IDR',
                 'max_users' => $maxUsers,
                 'max_assets' => $maxAssets,
                 'max_sites' => $maxSites,
-                'status' => 'DRAFT',
-                'is_public' => false,
+                'status' => 'PUBLISHED',
+                'is_public' => true,
+                'effective_from' => now(),
+                'published_at' => now(),
                 'lock_version' => 1,
             ]);
 

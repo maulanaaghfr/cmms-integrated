@@ -130,6 +130,63 @@ class SupportController extends Controller
         ]);
     }
 
+
+        public function insights(Request $request): mixed
+    {
+        $actor = $request->attributes->get('tenant_user');
+        $since = now()->subDays($request->integer('window_days', 90));
+
+        $rows = DB::table('work_orders')
+            ->join('assets', 'assets.id', '=', 'work_orders.asset_id')
+            ->where('work_orders.created_at', '>=', $since)
+            ->select(
+                'work_orders.id', 'work_orders.asset_id', 'work_orders.status', 'work_orders.priority',
+                'work_orders.reported_at', 'work_orders.work_started_at', 'work_orders.completed_at', 'work_orders.due_at',
+                'assets.name as asset_name', 'assets.code as asset_code', 'assets.criticality',
+            )
+            ->get();
+
+        $byAsset = $rows->groupBy('asset_id');
+
+        $topFailing = $byAsset->map(function ($group, $assetId) {
+            $completed = $group->filter(fn ($r) => $r->completed_at);
+            $mttrHours = $completed->isEmpty() ? null : round($completed->avg(
+                fn ($r) => \Carbon\Carbon::parse($r->reported_at)->diffInMinutes(\Carbon\Carbon::parse($r->completed_at)) / 60
+            ), 1);
+
+            return [
+                'asset_id' => $assetId,
+                'asset_name' => $group->first()->asset_name,
+                'asset_code' => $group->first()->asset_code,
+                'criticality' => $group->first()->criticality,
+                'work_order_count' => $group->count(),
+                'avg_repair_hours' => $mttrHours,
+                'overdue_count' => $group->filter(fn ($r) => $r->due_at && \Carbon\Carbon::parse($r->due_at)->isPast() && ! in_array($r->status, ['CLOSED', 'CANCELLED'], true))->count(),
+            ];
+        })->sortByDesc('work_order_count')->values()->take(10);
+
+        $overdueOpen = $rows->filter(fn ($r) => $r->due_at && \Carbon\Carbon::parse($r->due_at)->isPast() && ! in_array($r->status, ['CLOSED', 'CANCELLED'], true))->count();
+        $completed = $rows->filter(fn ($r) => $r->completed_at);
+        $fleetMttrHours = $completed->isEmpty() ? null : round($completed->avg(
+            fn ($r) => \Carbon\Carbon::parse($r->reported_at)->diffInMinutes(\Carbon\Carbon::parse($r->completed_at)) / 60
+        ), 1);
+
+        return ApiData::item([
+            'window_days' => $request->integer('window_days', 90),
+            'generated_at' => now(),
+            'method' => 'rule_based',
+            'summary' => [
+                'total_work_orders' => $rows->count(),
+                'overdue_open_work_orders' => $overdueOpen,
+                'fleet_avg_repair_hours' => $fleetMttrHours,
+                'assets_with_activity' => $byAsset->count(),
+            ],
+            'top_problem_assets' => $topFailing,
+        ]);
+    }
+
+
+
     private function authorizeEntity(Request $request, string $type, string $id): void
     {
         if ($type === 'WORK_ORDER') {

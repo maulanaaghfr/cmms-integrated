@@ -34,6 +34,7 @@ import Analytics from "./pages/Analytics";
 import AIInsights from "./pages/AIInsights";
 import Billing from "./pages/Billing";
 import Procurement from "./pages/Procurement";
+import Profile from "./pages/Profile";
 
 // super admin pages
 import Companies from "./pages/super/Companies";
@@ -86,6 +87,7 @@ function Shell() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/notifications" element={<Guard roles={["company_admin", "manager"]}><Notifications /></Guard>} />
 
         <Route path="/companies" element={<Guard roles={["super_admin"]}><Companies /></Guard>} />

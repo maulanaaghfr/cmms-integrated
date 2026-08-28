@@ -86,7 +86,7 @@ function pinDivIcon(color, label) {
 
 const DEFAULT_CENTER = [-7.4478, 112.7183]; // Sidoarjo, fallback when nothing geocoded yet
 
-function SiteMap({ sites, onAdd, canEdit }) {
+function SiteMap({ sites, onAdd, canEdit, overlayOpen = false }) {
   const [coords, setCoords] = useState({}); // site_id -> {lat, lng}
   const [resolving, setResolving] = useState(false);
 
@@ -120,7 +120,7 @@ function SiteMap({ sites, onAdd, canEdit }) {
     : DEFAULT_CENTER;
 
   return (
-    <Card className="flex h-full flex-col p-0 overflow-hidden">
+    <Card className="relative z-0 isolate flex h-full flex-col overflow-hidden p-0">
       <div className="flex items-center justify-between p-4 pb-3">
         <h3 className="font-display text-sm font-bold text-foreground">Peta Lokasi</h3>
         {canEdit && (
@@ -129,11 +129,11 @@ function SiteMap({ sites, onAdd, canEdit }) {
           </Button>
         )}
       </div>
-      <div className="relative min-h-55 flex-1">
+      <div className={`relative z-0 min-h-55 flex-1 ${overlayOpen ? "pointer-events-none" : ""}`} aria-hidden={overlayOpen}>
         {sites.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">Belum ada site.</div>
         ) : (
-          <MapContainer center={center} zoom={markers.length ? 13 : 11} scrollWheelZoom={false} style={{ height: "100%", width: "100%", minHeight: 220 }}>
+          <MapContainer className="relative z-0" center={center} zoom={markers.length ? 13 : 11} scrollWheelZoom={false} style={{ height: "100%", width: "100%", minHeight: 220, zIndex: 0 }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -149,7 +149,7 @@ function SiteMap({ sites, onAdd, canEdit }) {
           </MapContainer>
         )}
         {resolving && (
-          <div className="absolute right-2 top-2 z-1000 flex items-center gap-1.5 rounded-full bg-card/95 px-2.5 py-1 text-[10px] font-medium text-muted-foreground shadow">
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 rounded-full bg-card/95 px-2.5 py-1 text-[10px] font-medium text-muted-foreground shadow">
             <Loader2 className="h-3 w-3 animate-spin" /> Menentukan lokasi peta...
           </div>
         )}
@@ -180,7 +180,7 @@ function RowMenu({ canEdit, onView, onEdit, onArchive }) {
     <div className="relative inline-block" ref={ref}>
       <IconButton title="Aksi" onClick={() => setOpen((o) => !o)}><MoreHorizontal className="h-4 w-4" /></IconButton>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border bg-card py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border bg-card py-1 shadow-lg">
           <button onClick={() => { setOpen(false); onView(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted">
             <Eye className="h-3.5 w-3.5" /> Lihat area
           </button>
@@ -392,7 +392,12 @@ export default function Locations() {
       </Card>
 
       <div className="mb-5">
-        <SiteMap sites={sites} canEdit={canEdit} onAdd={() => setLocationForm({ ...blankLocation, site_id: sites[0]?.id || "" })} />
+        <SiteMap
+          sites={sites}
+          canEdit={canEdit}
+          overlayOpen={!!locationForm || !!siteForm || !!detailSite}
+          onAdd={() => setLocationForm({ ...blankLocation, site_id: sites[0]?.id || "" })}
+        />
       </div>
 
       <Card>

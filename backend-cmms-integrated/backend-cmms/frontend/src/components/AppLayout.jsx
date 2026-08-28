@@ -24,6 +24,9 @@ const NAV = [
   { to: "/assets", label: "Assets", icon: Boxes, roles: ["company_admin", "manager", "technician"], children: [{ label: "All Assets", to: "/assets" }, { label: "Categories", to: "/asset-categories" }, { label: "Sites", to: "/sites" }, { label: "Locations", to: "/locations" }] },
   { to: "/users", label: "People", icon: Users2, roles: ["company_admin"], children: [{ label: "Users", to: "/users" }, { label: "Teams", to: "/teams" }] },
   { to: "/preventive", label: "Preventive Maintenance", icon: CalendarClock, roles: ["company_admin", "manager"] },
+  { to: "/ai-insights", label: "AI Insights", icon: Sparkles, roles: ["company_admin", "manager"] },
+  { to: "/analytics", label: "Analytics", icon: BarChart3, roles: ["company_admin", "manager"] },
+  { to: "/inventory", label: "Inventory", icon: Package, roles: ["company_admin", "manager"] },
   { to: "/billing", label: "Billing", icon: Receipt, roles: ["company_admin"] },
 ];
 
@@ -92,37 +95,115 @@ function NotificationBell() {
   );
 }
 
-function TrialBanner() {
-  // Trial info comes from the billing subscription API — shown only when
-  // the subscription status is TRIAL and there's a trial_ends_at date.
-  const { user } = useApp();
-  const [trialInfo, setTrialInfo] = React.useState(null);
+// Derives what the top banner/badge should say from the real subscription.
+// Returns: undefined while loading, or one of:
+//   null                              -> nothing to show (super_admin, or an active non-trial plan)
+//   { type: "trial", left, planName, endsAt }
+//   { type: "none" }                  -> no subscription/plan at all yet
+function useBillingBanner(user) {
+  const [banner, setBanner] = React.useState(undefined);
 
   React.useEffect(() => {
-    if (user?.role === "super_admin") return;
+    if (!user || user.role === "super_admin") {
+      setBanner(null);
+      return;
+    }
+    let cancelled = false;
     import("../lib/billing").then(({ getSubscription }) => {
-      getSubscription().then((res) => {
-        const sub = res?.data;
-        if (sub?.status === "TRIAL" && sub?.trial_ends_at) {
-          const ms = new Date(sub.trial_ends_at + "T23:59:59").getTime() - Date.now();
-          const left = Math.ceil(ms / 86400000);
-          setTrialInfo({ left, planName: sub.plan?.name || "" });
-        }
-      }).catch(() => {});
+      getSubscription()
+        .then((res) => {
+          if (cancelled) return;
+          const sub = res?.data;
+          if (sub?.pending?.plan?.name) {
+            // A plan was picked but the invoice isn't paid yet — nudge to finish paying,
+            // this takes priority over the "no plan"/trial nudges below.
+            setBanner({ type: "pending", planName: sub.pending.plan.name, dueAt: sub.pending.invoice?.due_at || null });
+          } else if (!sub || !sub.plan?.name) {
+            setBanner({ type: "none" });
+          } else if (sub.status === "TRIAL" && sub.trial_ends_at) {
+            const endsAt = new Date(`${sub.trial_ends_at}T23:59:59`);
+            const left = Math.ceil((endsAt.getTime() - Date.now()) / 86400000);
+            setBanner({ type: "trial", left, planName: sub.plan?.name || "", endsAt: sub.trial_ends_at });
+          } else {
+            setBanner(null); // has an active, non-trial plan — nothing to nudge
+          }
+        })
+        .catch(() => { if (!cancelled) setBanner(null); });
     });
+    return () => { cancelled = true; };
   }, [user]);
 
-  if (user?.role === "super_admin") return null;
-  const shownTrial = trialInfo || { left: 13, planName: "Professional" };
-  const urgent = shownTrial.left <= 3;
+  return banner;
+}
+
+function TrialBanner({ banner, canUpgrade }) {
+  if (!banner) return null;
+
+  if (banner.type === "pending") {
+    const dueLabel = banner.dueAt
+      ? new Date(`${banner.dueAt}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+      : null;
+    return (
+      <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/[0.08] px-4 py-3 text-amber-700 lg:mx-7">
+        <span className="inline-flex items-start gap-2">
+          <CircleAlert className="h-4 w-4" />
+          <span>
+            <b className="block text-xs">Paket {banner.planName} belum aktif — menunggu pembayaran.</b>
+            <span className="block text-[11px] font-medium">
+              {dueLabel ? `Selesaikan pembayaran sebelum ${dueLabel} agar paket aktif otomatis.` : "Selesaikan pembayaran agar paket aktif otomatis."}
+            </span>
+          </span>
+        </span>
+        {canUpgrade && (
+          <Link to="/billing" className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-primary-foreground hover:brightness-110">
+            Bayar sekarang <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (banner.type === "none") {
+    return (
+      <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/[0.08] px-4 py-3 text-amber-700 lg:mx-7">
+        <span className="inline-flex items-start gap-2">
+          <CircleAlert className="h-4 w-4" />
+          <span>
+            <b className="block text-xs">You don&apos;t have an active plan yet.</b>
+            <span className="block text-[11px] font-medium">Choose a plan to unlock all CMMS features.</span>
+          </span>
+        </span>
+        {canUpgrade && (
+          <Link to="/billing?upgrade=1" className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-primary-foreground hover:brightness-110">
+            Choose a plan <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  // type === "trial"
+  const urgent = banner.left <= 3;
+  const ended = banner.left <= 0;
+  const formattedDate = new Date(`${banner.endsAt}T00:00:00`).toLocaleDateString("id-ID", {
+    day: "numeric", month: "long", year: "numeric",
+  });
+
   return (
     <div className={`mx-4 mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border px-4 py-3 lg:mx-7 ${urgent ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/[0.08] text-amber-700"}`}>
       <span className="inline-flex items-start gap-2">
         <CircleAlert className="h-4 w-4" />
-        <span><b className="block text-xs">{shownTrial.left > 0 ? `Your ${shownTrial.planName} trial ends in ${shownTrial.left} days (2026-08-25).` : "Your trial has ended."}</b><span className="block text-[11px] font-medium">Upgrade now to keep your data and access all features.</span></span>
+        <span>
+          <b className="block text-xs">
+            {ended
+              ? "Your trial has ended."
+              : `Your ${banner.planName} trial ends in ${banner.left} day${banner.left === 1 ? "" : "s"} (${formattedDate}).`}
+          </b>
+          <span className="block text-[11px] font-medium">Upgrade now to keep your data and access all features.</span>
+        </span>
       </span>
-      {user?.role === "company_admin" && (
-        <Link to="/billing" className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-primary-foreground hover:brightness-110">
+      {canUpgrade && (
+        <Link to="/billing?upgrade=1" className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-primary-foreground hover:brightness-110">
           Upgrade <ArrowUpRight className="h-3 w-3" />
         </Link>
       )}
@@ -134,6 +215,7 @@ export default function AppLayout({ children }) {
   const { user, logout } = useApp();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const banner = useBillingBanner(user);
 
   const items = NAV.filter((n) => n.roles.includes(user.role));
   const current = items.find((n) => n.to === location.pathname) || items[0];
@@ -223,21 +305,31 @@ export default function AppLayout({ children }) {
       <div className="flex min-w-0 flex-1 flex-col lg:pl-56">
         <header className="sticky top-0 z-20 flex h-[74px] items-center gap-3 border-b bg-card/95 px-4 backdrop-blur lg:px-7">
           <button className="lg:hidden" onClick={() => setOpen(true)}><Menu className="h-5 w-5" /></button>
-          <h1 className="font-display text-sm font-extrabold text-foreground">{{ "/users": "Users", "/teams": "Teams", "/sites": "Sites", "/locations": "Locations", "/asset-categories": "Categories" }[location.pathname] || current?.label}</h1>
+          <h1 className="font-display text-sm font-extrabold text-foreground">{{ "/profile": "Profil Saya", "/users": "Users", "/teams": "Teams", "/sites": "Sites", "/locations": "Locations", "/asset-categories": "Categories" }[location.pathname] || current?.label}</h1>
           <div className="ml-auto flex items-center gap-2">
-            {!isSuper && (
+            {banner?.type === "trial" && (
+              <span className={`hidden rounded-lg border px-3 py-1.5 text-xs font-semibold sm:block ${banner.left <= 3 ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-amber-300 bg-amber-50 text-amber-700"}`}>
+                {banner.left > 0 ? `Trial: ${banner.left}d remaining` : "Trial ended"}
+              </span>
+            )}
+            {banner?.type === "none" && (
               <span className="hidden rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 sm:block">
-                Trial: 13d remaining
+                No active plan
               </span>
             )}
             <NotificationBell />
-            <button className="hidden items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground sm:inline-flex">
+            <Link
+              to="/profile"
+              className="hidden items-center gap-2 rounded-xl border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/30 hover:bg-primary/[0.04] hover:text-foreground sm:inline-flex"
+              aria-label="Buka profil saya"
+            >
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] text-white">{user.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>
-              {user.name}<ChevronDown className="h-3.5 w-3.5" />
-            </button>
+              <span className="max-w-32 truncate">{user.name}</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </header>
-        <TrialBanner />
+        <TrialBanner banner={banner} canUpgrade={user.role === "company_admin"} />
         <main className="flex-1 px-4 py-5 lg:px-7 lg:py-5">{children}</main>
       </div>
     </div>

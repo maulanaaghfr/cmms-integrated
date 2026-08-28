@@ -6,3 +6,9 @@ export const getInvoice = (id) => apiActiveTenant(`/billing/invoices/${id}`);
 export const listPaymentChannels = () => apiActiveTenant("/billing/payment-channels");
 export const createInvoicePayment = (invoiceId, body) => apiActiveTenant(`/billing/invoices/${invoiceId}/payments`, { method: "POST", body });
 export const checkPaymentStatus = (paymentId) => apiActiveTenant(`/billing/payments/${paymentId}/check-status`, { method: "POST" });
+export const listPlans = () => apiActiveTenant("/billing/plans");
+export const changePlan = (planId, billingPeriod) =>
+  apiActiveTenant("/billing/subscription/change-plan", {
+    method: "POST",
+    body: billingPeriod ? { plan_id: planId, billing_period: billingPeriod } : { plan_id: planId },
+  });

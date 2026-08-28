@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\AssetController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\InventoryController;
@@ -114,6 +115,8 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
             Route::post('notifications/read-all', [SupportController::class, 'readAllNotifications'])->middleware('tenant.feature:core.notifications');
             Route::post('notifications/{notification}/read', [SupportController::class, 'readNotification'])->middleware('tenant.feature:core.notifications');
             Route::get('dashboard/summary', [SupportController::class, 'dashboard']);
+            Route::get('insights', [SupportController::class, 'insights']);
+            Route::get('analytics/reliability', [AnalyticsController::class, 'reliability']);
 
             // ---------- Manufacturers ----------
             Route::get('manufacturers', [ManufacturerController::class, 'index']);
@@ -161,6 +164,8 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
 
         Route::middleware(['tenant.access:false', 'tenant.role:COMPANY_ADMIN'])->prefix('billing')->group(function (): void {
             Route::get('subscription', [BillingController::class, 'subscription']);
+            Route::get('plans', [BillingController::class, 'plans']);
+            Route::post('subscription/change-plan', [BillingController::class, 'changePlan']);
             Route::get('invoices', [BillingController::class, 'invoices']);
             Route::get('invoices/{invoice}', [BillingController::class, 'invoice']);
             Route::get('payment-channels', [BillingController::class, 'channels']);
