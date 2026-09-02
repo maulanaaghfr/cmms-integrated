@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, PackageX, Package, AlertTriangle, Boxes, Warehouse, TrendingUp } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, PackageX, Package, AlertTriangle, Boxes, Warehouse, TrendingUp, ScanLine, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useApp, idr } from "../store/store";
 import {
   PageHeader, Card, Table, Pill, StatCard, Button, IconButton, SearchInput,
-  Modal, ConfirmDialog, Field, Input, Select, Reveal, Tabs,
+  Modal, ConfirmDialog, Field, Input, Select, Reveal, Tabs, Barcode,
 } from "../components/kit";
 import {
   listSpareParts, createSparePart, updateSparePart, archiveSparePart,
@@ -12,6 +12,7 @@ import {
   listSparePartCategories, adjustStock,
 } from "../lib/inventory";
 import { listSites } from "../lib/assets";
+import { printBarcodeLabel } from "../components/CodeTools";
 
 const blankPart = {
   site_id: "", spare_part_category_id: "", code: "", name: "", description: "",
@@ -45,6 +46,11 @@ export default function Inventory() {
   const [saving, setSaving] = useState(false);
   const [stockModal, setStockModal] = useState(null);
   const [stockAdj, setStockAdj] = useState({ warehouse_id: "", type: "IN", quantity: 1, reason: "" });
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerValue, setScannerValue] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,11 +108,12 @@ export default function Inventory() {
       if (form.id) {
         await updateSparePart(form.id, payload);
         toast.success("Sparepart diperbarui.");
+        setForm(null);
       } else {
-        await createSparePart(payload);
-        toast.success("Sparepart ditambahkan.");
+        const response = await createSparePart(payload);
+        setForm(response.data);
+        toast.success("Sparepart ditambahkan. Barcode otomatis sudah dibuat.");
       }
-      setForm(null);
       load();
     } catch (err) {
       toast.error(err.message || "Gagal menyimpan sparepart.");
@@ -167,6 +174,28 @@ export default function Inventory() {
     }
   };
 
+  const openScanner = () => { setScannerValue(""); setScannerOpen(true); };
+  const stopCameraScan = () => { streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null; setScanning(false); };
+  const startCameraScan = async () => {
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) return toast.error("Browser tidak mendukung scanner kamera. Gunakan scanner USB/Bluetooth atau input manual.");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      streamRef.current = stream; setScanning(true); if (videoRef.current) videoRef.current.srcObject = stream;
+      const detector = new window.BarcodeDetector({ formats: ["code_128", "ean_13", "ean_8", "upc_a", "qr_code"] });
+      const scan = async () => {
+        if (!streamRef.current || !videoRef.current) return;
+        try { const codes = await detector.detect(videoRef.current); if (codes[0]?.rawValue) { setScannerValue(codes[0].rawValue); stopCameraScan(); return; } } catch {}
+        if (streamRef.current) window.requestAnimationFrame(scan);
+      };
+      window.requestAnimationFrame(scan);
+    } catch (error) { toast.error(error.message || "Akses kamera ditolak."); }
+  };
+  const selectScannedPart = () => {
+    const match = spareParts.find((part) => part.barcode && part.barcode.toLowerCase() === scannerValue.trim().toLowerCase());
+    if (!match) return toast.error("Barcode tidak ditemukan di inventory.");
+    setScannerOpen(false); setForm({ ...blankPart, ...match }); toast.success(`Spare part ditemukan: ${match.name}`);
+  };
+
   /* ---- stock adjustment ---- */
   const openStockModal = (part) => {
     setStockModal(part);
@@ -202,6 +231,7 @@ export default function Inventory() {
         <div className="text-xs text-muted-foreground">{categoryName(r.spare_part_category_id)}</div>
       </div>
     ) },
+    { key: "barcode", header: "Barcode", render: (r) => r.barcode ? <Barcode value={r.barcode} height={28} width={0.75} /> : <span className="text-xs text-muted-foreground">-</span> },
     { key: "qty", header: "Stok", render: (r) => (
       <span className="tabular-nums">
         {r.total_quantity ?? 0}
@@ -220,6 +250,7 @@ export default function Inventory() {
             <TrendingUp className="h-4 w-4" />
           </IconButton>
         )}
+        {canEdit && <IconButton onClick={() => printBarcodeLabel({ value: r.barcode || r.code, title: r.name, code: r.code, unit: r.unit })} title="Print Label"><Printer className="h-4 w-4" /></IconButton>}
         {canEdit && <IconButton onClick={() => setForm({ ...blankPart, ...r })}><Pencil className="h-4 w-4" /></IconButton>}
         {canEdit && <IconButton onClick={() => setDel(r)} className="hover:text-destructive"><Trash2 className="h-4 w-4" /></IconButton>}
       </div>
@@ -232,9 +263,7 @@ export default function Inventory() {
         title="Inventory Sparepart"
         subtitle="Kelola stok suku cadang, gudang, dan titik pemesanan ulang."
         action={canEdit && (
-          <Button onClick={() => setForm({ ...blankPart, site_id: sites[0]?.id || "" })} disabled={sites.length === 0}>
-            <Plus className="h-4 w-4" /> Tambah Sparepart
-          </Button>
+          <div className="flex gap-2"><Button variant="ghost" onClick={openScanner}><ScanLine className="h-4 w-4" /> Scan Barcode</Button><Button onClick={() => setForm({ ...blankPart, site_id: sites[0]?.id || "" })} disabled={sites.length === 0}><Plus className="h-4 w-4" /> Tambah Sparepart</Button></div>
         )}
       />
 
@@ -254,7 +283,7 @@ export default function Inventory() {
 
       {tab === "parts" && (
         <Card>
-          <div className="mb-4"><SearchInput value={q} onChange={setQ} placeholder="Cari sparepart..." /></div>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center"><SearchInput value={q} onChange={setQ} placeholder="Cari sparepart..." /><Button variant="ghost" onClick={openScanner}><ScanLine className="h-4 w-4" /> Scan untuk buka spare part</Button></div>
           <Table
             columns={columns}
             rows={rows}
@@ -314,6 +343,10 @@ export default function Inventory() {
         </>
       )}
 
+      <Modal open={scannerOpen} onClose={() => { stopCameraScan(); setScannerOpen(false); }} title="Scan Barcode Spare Part" footer={<><Button variant="ghost" onClick={() => { stopCameraScan(); setScannerOpen(false); }}>Batal</Button><Button onClick={selectScannedPart}>Cari Spare Part</Button></>}>
+        <div className="space-y-4"><p className="text-sm text-muted-foreground">Gunakan kamera, scanner USB/Bluetooth, atau masukkan barcode secara manual. Hasil scan akan membuka data spare part yang sesuai.</p>{scanning && <video ref={videoRef} autoPlay muted playsInline className="w-full rounded-xl border bg-black" />}{!scanning && <Button variant="ghost" onClick={startCameraScan}><ScanLine className="h-4 w-4" /> Buka Kamera</Button>}<Field label="Barcode" required><Input autoFocus value={scannerValue} onChange={(event) => setScannerValue(event.target.value)} onKeyDown={(event) => event.key === "Enter" && selectScannedPart()} placeholder="Scan atau ketik barcode..." /></Field>{scannerValue && <p className="font-mono text-xs text-muted-foreground">{scannerValue}</p>}</div>
+      </Modal>
+
       {/* Spare Part Form Modal */}
       <Modal
         open={!!form} onClose={() => setForm(null)}
@@ -342,13 +375,25 @@ export default function Inventory() {
             <Field label="Kode" required><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SP-001" /></Field>
             <Field label="Nama" required><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label="Satuan"><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="pcs" /></Field>
-            <Field label="Barcode"><Input value={form.barcode || ""} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></Field>
+            <Field label="Barcode">
+              <div className="flex gap-2">
+                <Input value={form.barcode || ""} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Kosongkan untuk dibuat otomatis" />
+                {form.id && !form.barcode && <Button type="button" variant="ghost" className="shrink-0 px-3 text-xs" onClick={() => setForm({ ...form, barcode: `SP-${form.id}` })}>Buat otomatis</Button>}
+              </div>
+            </Field>
             <Field label="Stok Minimum"><Input type="number" min="0" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} /></Field>
             <Field label="Reorder Point"><Input type="number" min="0" value={form.reorder_point} onChange={(e) => setForm({ ...form, reorder_point: e.target.value })} /></Field>
             <Field label="Harga Satuan (Rp)"><Input type="number" min="0" value={form.unit_cost || ""} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} /></Field>
             <div className="sm:col-span-2">
               <Field label="Deskripsi"><Input value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
             </div>
+            {form.barcode && (
+              <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
+                <p className="mb-2 text-xs font-semibold text-foreground">Barcode spare part</p>
+                <Barcode value={form.barcode} height={64} width={1.5} />
+                <p className="mt-2 text-xs text-muted-foreground">Barcode ini dapat dipindai dari layar atau dicetak untuk ditempel pada part.</p>
+              </div>
+            )}
           </div>
         )}
       </Modal>

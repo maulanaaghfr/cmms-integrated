@@ -19,7 +19,7 @@ import { apiCentral, apiTenant, getToken, setToken, getActiveTenantDomain, setAc
 export const BACKEND_TO_FRONTEND_ROLE = {
   COMPANY_ADMIN: "company_admin",
   MANAGER: "manager",
-  SUPERVISOR: "manager", // no distinct "supervisor" role in the current frontend
+  SUPERVISOR: "supervisor",
   TECHNICIAN: "technician",
   OPERATOR: "operator",
   VIEWER: "view_only",

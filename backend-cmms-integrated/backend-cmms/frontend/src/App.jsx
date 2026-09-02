@@ -59,6 +59,7 @@ function MobileAppShell() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={isTech ? <TechHome /> : <OperatorHome />} />
         {isTech && <Route path="/work-orders" element={<TechWorkOrders />} />}
+        {isTech && <Route path="/assets" element={<Assets />} />}
         {!isTech && <Route path="/requests" element={<OperatorRequests />} />}
         <Route path="/notifications" element={<MobileNotifications />} />
         <Route path="/profile" element={<MobileProfile />} />
@@ -88,7 +89,7 @@ function Shell() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/notifications" element={<Guard roles={["company_admin", "manager"]}><Notifications /></Guard>} />
+        <Route path="/notifications" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Notifications /></Guard>} />
 
         <Route path="/companies" element={<Guard roles={["super_admin"]}><Companies /></Guard>} />
         <Route path="/subscriptions" element={<Guard roles={["super_admin"]}><Subscriptions /></Guard>} />
@@ -98,16 +99,16 @@ function Shell() {
 
         <Route path="/users" element={<Guard roles={["company_admin"]}><Users /></Guard>} />
         <Route path="/teams" element={<Guard roles={["company_admin"]}><Teams /></Guard>} />
-        <Route path="/asset-categories" element={<Guard roles={["company_admin", "manager"]}><ReferenceLists type="categories" /></Guard>} />
-        <Route path="/sites" element={<Guard roles={["company_admin", "manager"]}><Sites /></Guard>} />
-        <Route path="/locations" element={<Guard roles={["company_admin", "manager"]}><Locations /></Guard>} />
-        <Route path="/manufacturers" element={<Guard roles={["company_admin", "manager"]}><Manufacturers /></Guard>} />
-        <Route path="/assets" element={<Guard roles={["company_admin", "manager"]}><Assets /></Guard>} />
-        <Route path="/work-orders" element={<Guard roles={["company_admin", "manager"]}><WorkOrders /></Guard>} />
-        <Route path="/requests" element={<Guard roles={["operator", "company_admin", "manager"]}><Requests /></Guard>} />
-        <Route path="/procurement" element={<Guard roles={["company_admin", "manager"]}><Procurement /></Guard>} />
-        <Route path="/preventive" element={<Guard roles={["company_admin", "manager"]}><Preventive /></Guard>} />
-        <Route path="/inventory" element={<Guard roles={["company_admin", "manager"]}><Inventory /></Guard>} />
+        <Route path="/asset-categories" element={<Guard roles={["company_admin", "manager", "supervisor"]}><ReferenceLists type="categories" /></Guard>} />
+        <Route path="/sites" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Sites /></Guard>} />
+        <Route path="/locations" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Locations /></Guard>} />
+        <Route path="/manufacturers" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Manufacturers /></Guard>} />
+        <Route path="/assets" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Assets /></Guard>} />
+        <Route path="/work-orders" element={<Guard roles={["company_admin", "manager", "supervisor"]}><WorkOrders /></Guard>} />
+        <Route path="/requests" element={<Guard roles={["operator", "company_admin", "manager", "supervisor"]}><Requests /></Guard>} />
+        <Route path="/procurement" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Procurement /></Guard>} />
+        <Route path="/preventive" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Preventive /></Guard>} />
+        <Route path="/inventory" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Inventory /></Guard>} />
         <Route path="/technicians" element={<Guard roles={["company_admin", "manager"]}><Technicians /></Guard>} />
         <Route path="/analytics" element={<Guard roles={["company_admin", "manager"]}><Analytics /></Guard>} />
         <Route path="/ai-insights" element={<Guard roles={["company_admin", "manager"]}><AIInsights /></Guard>} />

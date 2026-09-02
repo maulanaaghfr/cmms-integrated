@@ -35,4 +35,12 @@ class NotificationService
             ->pluck('id')
             ->all();
     }
+
+    public function stakeholdersForAsset(object $asset): array
+    {
+        $leaders = $this->supervisorsForAsset($asset);
+        $operators = DB::table('asset_operator_assignments')
+            ->where('asset_id', $asset->id)->where('is_active', true)->pluck('tenant_user_id')->all();
+        return array_values(array_unique([...$leaders, ...$operators]));
+    }
 }

@@ -37,8 +37,19 @@ class WorkOrderController extends Controller
         $row->status_history = DB::table('work_order_status_histories')->where('work_order_id', $workOrder)->orderBy('occurred_at')->get();
         $row->assignments = DB::table('work_order_assignments')->where('work_order_id', $workOrder)->orderBy('assigned_at')->get();
         $row->labor_entries = DB::table('work_order_labor_entries')->where('work_order_id', $workOrder)->orderBy('started_at')->get();
+        $row->parts = DB::table('spare_part_stock_movements')
+            ->join('spare_parts', 'spare_parts.id', '=', 'spare_part_stock_movements.spare_part_id')
+            ->join('warehouses', 'warehouses.id', '=', 'spare_part_stock_movements.warehouse_id')
+            ->where('spare_part_stock_movements.reference_type', 'WORK_ORDER')
+            ->where('spare_part_stock_movements.reference_id', $workOrder)
+            ->select('spare_part_stock_movements.id', 'spare_part_stock_movements.quantity', 'spare_part_stock_movements.created_at', 'spare_parts.code', 'spare_parts.name', 'spare_parts.unit', 'warehouses.name as warehouse_name')
+            ->orderBy('spare_part_stock_movements.created_at')
+            ->get();
+        $row->checklist = DB::table('work_order_checklist_items')->where('work_order_id', $workOrder)->orderBy('sort_order')->get();
+        $row->signatures = DB::table('work_order_signatures')->where('work_order_id', $workOrder)->orderByDesc('signed_at')->get();
         $row->comments = DB::table('comments')->where('entity_type', 'WORK_ORDER')->where('entity_id', $workOrder)->whereNull('deleted_at')->orderBy('created_at')->get();
         $row->attachments = DB::table('attachments')->where('entity_type', 'WORK_ORDER')->where('entity_id', $workOrder)->whereNull('deleted_at')->orderBy('created_at')->get();
+        $row->evidence = $row->attachments->groupBy('media_role');
 
         return ApiData::item($row);
     }
@@ -48,13 +59,25 @@ class WorkOrderController extends Controller
         $data = $request->validate([
             'asset_id' => ['required', 'ulid'], 'title' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string'],
             'priority' => ['required', Rule::in(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])], 'due_at' => ['nullable', 'date'],
+            'checklist' => ['nullable', 'array'], 'checklist.*' => ['required', 'string', 'max:500'],
         ]);
         $actor = $request->attributes->get('tenant_user');
         if (! in_array($actor->role_key, ['COMPANY_ADMIN', 'MANAGER', 'SUPERVISOR', 'OPERATOR'], true)) {
             throw new ApiException('WORK_ORDER_CREATE_FORBIDDEN', 'Your role cannot create direct work orders.', 403);
         }
         $asset = $this->scope->asset($actor, $data['asset_id']);
-        $row = DB::transaction(fn () => $this->service->create($asset, $actor, $data));
+        $row = DB::transaction(function () use ($asset, $actor, $data): object {
+            $created = $this->service->create($asset, $actor, $data);
+            foreach (array_values($data['checklist'] ?? []) as $index => $label) {
+                DB::table('work_order_checklist_items')->insert([
+                    'id' => (string) Str::ulid(), 'work_order_id' => $created->id, 'label' => $label,
+                    'sort_order' => $index, 'is_required' => true, 'is_completed' => false,
+                    'note' => null, 'completed_by' => null, 'completed_at' => null,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            return $created;
+        });
         $this->notifications->send($this->notifications->maintenanceManagersForAsset($asset), 'work_order.approval_required', 'WORK_ORDER', $row->id, 'Direct work order needs approval', $row->title);
         $this->audit->tenant($request, 'work_order.created', 'WORK_ORDER', $row->id, null, $data);
 
@@ -125,6 +148,34 @@ class WorkOrderController extends Controller
         $this->audit->tenant($request, 'work_order.updated', 'WORK_ORDER', $workOrder, $before, $updated);
 
         return $this->show($request, $workOrder);
+    }
+
+    public function recommendations(Request $request, string $workOrder): mixed
+    {
+        $actor = $request->attributes->get('tenant_user');
+        $row = $this->scope->workOrder($actor, $workOrder);
+        $asset = DB::table('assets')->leftJoin('asset_categories', 'asset_categories.id', '=', 'assets.asset_category_id')
+            ->where('assets.id', $row->asset_id)->select('assets.*', 'asset_categories.name as category_name')->first();
+        $active = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'ON_HOLD'];
+        $load = DB::table('work_orders')->select('current_assignee_id', DB::raw('COUNT(*) as active_count'))
+            ->whereIn('status', $active)->whereNotNull('current_assignee_id')->groupBy('current_assignee_id')->pluck('active_count', 'current_assignee_id');
+        $teams = DB::table('team_members')->join('teams', 'teams.id', '=', 'team_members.team_id')
+            ->where('teams.site_id', $asset->site_id)->where('teams.is_active', true)->where('team_members.is_active', true)
+            ->select('team_members.tenant_user_id', 'teams.id as team_id', 'teams.name as team_name', 'teams.specialty')->get()->groupBy('tenant_user_id');
+        $candidates = DB::table('tenant_users')->where('primary_site_id', $asset->site_id)->where('role_key', 'TECHNICIAN')->where('status', 'ACTIVE')->get();
+        $result = $candidates->map(function (object $technician) use ($load, $teams, $asset): array {
+            $memberships = $teams->get($technician->id, collect());
+            $specialtyMatch = $memberships->contains(fn (object $team) => $team->specialty && $asset->category_name && str_contains(mb_strtolower($team->specialty), mb_strtolower($asset->category_name)));
+            $activeCount = (int) ($load[$technician->id] ?? 0);
+            return [
+                'technician_id' => $technician->id, 'full_name' => $technician->full_name, 'primary_site_id' => $technician->primary_site_id,
+                'active_work_orders' => $activeCount, 'availability' => $activeCount < 3 ? 'AVAILABLE' : 'BUSY',
+                'specialty_match' => $specialtyMatch, 'team_ids' => $memberships->pluck('team_id')->values()->all(),
+                'team_names' => $memberships->pluck('team_name')->values()->all(),
+                'score' => ($specialtyMatch ? 100 : 50) + max(0, 30 - ($activeCount * 10)),
+            ];
+        })->sortByDesc('score')->values();
+        return ApiData::item(['asset_id' => $asset->id, 'asset_category' => $asset->category_name, 'recommendations' => $result]);
     }
 
     public function assign(Request $request, string $workOrder): mixed
@@ -208,13 +259,26 @@ class WorkOrderController extends Controller
         $data = $request->validate(['completion_note' => ['required', 'string']]);
         $actor = $request->attributes->get('tenant_user');
         $row = $this->assignedWorkOrder($request, $workOrder);
+        $requiredChecklist = DB::table('work_order_checklist_items')->where('work_order_id', $row->id)->where('is_required', true)->where('is_completed', false)->count();
+        if ($requiredChecklist > 0) {
+            throw new ApiException('WORK_ORDER_CHECKLIST_INCOMPLETE', 'Complete every required checklist item before submitting the work order.', 422);
+        }
+        if (! DB::table('work_order_signatures')->where('work_order_id', $row->id)->exists()) {
+            throw new ApiException('WORK_ORDER_SIGNATURE_REQUIRED', 'A digital signature is required before submitting the work order.', 422);
+        }
+        foreach (['BEFORE', 'DURING', 'AFTER'] as $mediaRole) {
+            if (! DB::table('attachments')->where('entity_type', 'WORK_ORDER')->where('entity_id', $row->id)->where('media_role', $mediaRole)->whereNull('deleted_at')->exists()) {
+                throw new ApiException('WORK_ORDER_PHOTO_REQUIRED', "A {$mediaRole} photo is required before submitting the work order.", 422);
+            }
+        }
         $updated = DB::transaction(function () use ($row, $actor, $data) {
             $this->stopTimers($row->id);
 
             return $this->service->transition($row, 'COMPLETED', $actor, $data['completion_note'], null, ['completed_at' => now(), 'completed_by' => $actor->id, 'completion_note' => $data['completion_note']]);
         });
-        $recipients = array_unique([$row->requester_id, ...$this->notifications->supervisorsForAsset(DB::table('assets')->where('id', $row->asset_id)->first())]);
-        $this->notifications->send($recipients, 'work_order.completed', 'WORK_ORDER', $row->id, 'Work order completed', $row->title);
+        $asset = DB::table('assets')->where('id', $row->asset_id)->first();
+        $recipients = array_unique([$row->requester_id, $row->current_assignee_id, ...$this->notifications->stakeholdersForAsset($asset)]);
+        $this->notifications->send($recipients, 'work_order.completed', 'WORK_ORDER', $row->id, 'Work order menunggu approval', $row->title);
 
         return ApiData::item($updated);
     }
@@ -235,7 +299,8 @@ class WorkOrderController extends Controller
 
             return $closed;
         });
-        $this->notifications->send($row->current_assignee_id, 'work_order.closed', 'WORK_ORDER', $row->id, 'Work order closed', $row->title);
+        $asset = DB::table('assets')->where('id', $row->asset_id)->first();
+        $this->notifications->send(array_unique([$row->requester_id, $row->current_assignee_id, ...$this->notifications->stakeholdersForAsset($asset)]), 'work_order.closed', 'WORK_ORDER', $row->id, 'Work order closed', $row->title);
 
         return ApiData::item($updated);
     }
@@ -252,6 +317,36 @@ class WorkOrderController extends Controller
         $this->notifications->send($row->current_assignee_id, 'work_order.completion_rejected', 'WORK_ORDER', $row->id, 'Completion rejected', $data['reason']);
 
         return ApiData::item($updated);
+    }
+
+    public function updateChecklist(Request $request, string $workOrder, string $item): mixed
+    {
+        $data = $request->validate(['is_completed' => ['required', 'boolean'], 'note' => ['nullable', 'string', 'max:2000']]);
+        $actor = $request->attributes->get('tenant_user');
+        $row = $this->assignedWorkOrder($request, $workOrder);
+        if ($row->status !== 'IN_PROGRESS') throw new ApiException('CHECKLIST_STATUS_INVALID', 'Checklist can only be updated while the work order is in progress.', 409);
+        $itemRow = DB::table('work_order_checklist_items')->where('id', $item)->where('work_order_id', $row->id)->first();
+        if (! $itemRow) throw new ApiException('CHECKLIST_ITEM_NOT_FOUND', 'Checklist item was not found.', 404);
+        DB::table('work_order_checklist_items')->where('id', $item)->update([
+            'is_completed' => $data['is_completed'], 'note' => $data['note'] ?? null,
+            'completed_by' => $data['is_completed'] ? $actor->id : null,
+            'completed_at' => $data['is_completed'] ? now() : null, 'updated_at' => now(),
+        ]);
+        return ApiData::item(DB::table('work_order_checklist_items')->where('id', $item)->first());
+    }
+
+    public function sign(Request $request, string $workOrder): mixed
+    {
+        $data = $request->validate(['signature_data' => ['required', 'string', 'max:2000000']]);
+        $actor = $request->attributes->get('tenant_user');
+        $row = $this->assignedWorkOrder($request, $workOrder);
+        if ($row->status !== 'IN_PROGRESS') throw new ApiException('SIGNATURE_STATUS_INVALID', 'Signature can only be captured while the work order is in progress.', 409);
+        $id = (string) Str::ulid();
+        DB::table('work_order_signatures')->insert([
+            'id' => $id, 'work_order_id' => $row->id, 'signed_by' => $actor->id,
+            'signature_data' => $data['signature_data'], 'signed_at' => now(), 'created_at' => now(),
+        ]);
+        return ApiData::item(DB::table('work_order_signatures')->where('id', $id)->first(), 201);
     }
 
     public function cancel(Request $request, string $workOrder): mixed
@@ -287,6 +382,54 @@ class WorkOrderController extends Controller
         });
 
         return ApiData::item($entry, 201);
+    }
+
+    /** Record a scanned spare part against an in-progress assigned work order. */
+    public function usePart(Request $request, string $workOrder): mixed
+    {
+        $data = $request->validate([
+            'barcode' => ['required', 'string', 'max:128'],
+            'warehouse_id' => ['required', 'ulid', Rule::exists('warehouses', 'id')],
+            'quantity' => ['required', 'integer', 'min:1'],
+        ]);
+        $actor = $request->attributes->get('tenant_user');
+        $row = $this->assignedWorkOrder($request, $workOrder);
+        if ($row->status !== 'IN_PROGRESS') {
+            throw new ApiException('WORK_ORDER_PART_USAGE_INVALID', 'Spare parts can only be recorded while the work order is in progress.', 409);
+        }
+
+        DB::transaction(function () use ($data, $actor, $row): void {
+            $lockedWorkOrder = DB::table('work_orders')->where('id', $row->id)->lockForUpdate()->first()
+                ?? throw new ApiException('WORK_ORDER_NOT_FOUND', 'Work order was not found.', 404);
+            if ($lockedWorkOrder->status !== 'IN_PROGRESS') {
+                throw new ApiException('WORK_ORDER_PART_USAGE_INVALID', 'Spare parts can only be recorded while the work order is in progress.', 409);
+            }
+            $asset = DB::table('assets')->where('id', $lockedWorkOrder->asset_id)->first()
+                ?? throw new ApiException('ASSET_NOT_FOUND', 'The work order asset was not found.', 404);
+            $part = $this->scope->spareParts($actor)->where('barcode', $data['barcode'])->where('is_active', true)->lockForUpdate()->first()
+                ?? throw new ApiException('SPARE_PART_NOT_FOUND', 'No active spare part matches the scanned barcode in your permitted site.', 404);
+            if ($part->site_id !== $asset->site_id) {
+                throw new ApiException('SPARE_PART_SITE_MISMATCH', 'The scanned spare part must belong to the work order asset site.', 422);
+            }
+            $warehouse = $this->scope->warehouse($actor, $data['warehouse_id']);
+            if ($warehouse->site_id !== $asset->site_id) {
+                throw new ApiException('WAREHOUSE_SITE_MISMATCH', 'The warehouse must belong to the work order asset site.', 422);
+            }
+            $stock = DB::table('spare_part_stocks')->where('spare_part_id', $part->id)->where('warehouse_id', $warehouse->id)->lockForUpdate()->first();
+            if (! $stock || $stock->quantity < $data['quantity']) {
+                throw new ApiException('INSUFFICIENT_STOCK', 'Insufficient stock for the scanned spare part.', 422);
+            }
+            DB::table('spare_part_stocks')->where('id', $stock->id)->update(['quantity' => $stock->quantity - $data['quantity'], 'updated_at' => now()]);
+            DB::table('spare_part_stock_movements')->insert([
+                'id' => (string) Str::ulid(), 'spare_part_id' => $part->id, 'warehouse_id' => $warehouse->id,
+                'type' => 'OUT', 'quantity' => $data['quantity'], 'reason' => 'Work order part usage',
+                'reference_type' => 'WORK_ORDER', 'reference_id' => $lockedWorkOrder->id, 'created_by' => $actor->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+        $this->audit->tenant($request, 'work_order.part_used', 'WORK_ORDER', $row->id, null, ['barcode' => $data['barcode'], 'warehouse_id' => $data['warehouse_id'], 'quantity' => $data['quantity']]);
+
+        return $this->show($request, $row->id);
     }
 
     public function stopTimer(Request $request, string $workOrder): mixed

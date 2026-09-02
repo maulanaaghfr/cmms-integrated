@@ -104,6 +104,10 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
             }
             Route::post('work-orders/{workOrder}/timer/start', [WorkOrderController::class, 'startTimer'])->middleware('tenant.feature:core.work_orders');
             Route::post('work-orders/{workOrder}/timer/stop', [WorkOrderController::class, 'stopTimer'])->middleware('tenant.feature:core.work_orders');
+            Route::post('work-orders/{workOrder}/parts', [WorkOrderController::class, 'usePart'])->middleware('tenant.feature:core.work_orders');
+            Route::get('work-orders/{workOrder}/recommendations', [WorkOrderController::class, 'recommendations'])->middleware('tenant.feature:core.work_orders');
+            Route::patch('work-orders/{workOrder}/checklist/{item}', [WorkOrderController::class, 'updateChecklist'])->middleware('tenant.feature:core.work_orders');
+            Route::post('work-orders/{workOrder}/signature', [WorkOrderController::class, 'sign'])->middleware('tenant.feature:core.work_orders');
 
             Route::get('attachments/{attachment}/download', [SupportController::class, 'downloadAttachment']);
             Route::middleware('tenant.role:COMPANY_ADMIN,MANAGER,SUPERVISOR,TECHNICIAN,OPERATOR')->group(function (): void {

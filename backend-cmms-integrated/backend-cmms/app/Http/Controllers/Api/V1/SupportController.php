@@ -23,7 +23,7 @@ class SupportController extends Controller
         $this->ensureCanWrite($request);
         $data = $request->validate([
             'entity_type' => ['required', Rule::in(['REQUEST', 'WORK_ORDER'])], 'entity_id' => ['required', 'ulid'],
-            'media_role' => ['required', Rule::in(['REQUEST', 'BEFORE', 'AFTER', 'OTHER'])],
+            'media_role' => ['required', Rule::in(['REQUEST', 'BEFORE', 'DURING', 'AFTER', 'SIGNATURE', 'OTHER'])],
             'file' => ['required', 'file', 'mimetypes:image/jpeg,image/png,image/webp,video/mp4,video/quicktime', 'max:51200'],
         ]);
         $this->authorizeEntity($request, $data['entity_type'], $data['entity_id']);
@@ -190,8 +190,11 @@ class SupportController extends Controller
     private function authorizeEntity(Request $request, string $type, string $id): void
     {
         if ($type === 'WORK_ORDER') {
-            $this->scope->workOrder($request->attributes->get('tenant_user'), $id);
-
+            $actor = $request->attributes->get('tenant_user');
+            $workOrder = $this->scope->workOrder($actor, $id);
+            if ($actor->role_key === 'TECHNICIAN' && $workOrder->current_assignee_id !== $actor->id) {
+                throw new ApiException('WORK_ORDER_ASSIGNEE_REQUIRED', 'Only the assigned technician can upload evidence to this work order.', 403);
+            }
             return;
         }
         $this->scope->maintenanceRequest($request->attributes->get('tenant_user'), $id);

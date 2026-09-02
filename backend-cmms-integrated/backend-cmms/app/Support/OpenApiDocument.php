@@ -132,7 +132,7 @@ final class OpenApiDocument
             return ['required' => true, 'content' => ['application/json' => ['schema' => ['type' => 'object', 'required' => ['email', 'password'], 'properties' => ['email' => ['type' => 'string', 'format' => 'email'], 'password' => ['type' => 'string', 'format' => 'password'], 'device_name' => ['type' => 'string']]]]]];
         }
         if ($path === '/api/v1/attachments') {
-            return ['required' => true, 'content' => ['multipart/form-data' => ['schema' => ['type' => 'object', 'required' => ['entity_type', 'entity_id', 'media_role', 'file'], 'properties' => ['entity_type' => ['type' => 'string', 'enum' => ['REQUEST', 'WORK_ORDER']], 'entity_id' => ['type' => 'string'], 'media_role' => ['type' => 'string', 'enum' => ['REQUEST', 'BEFORE', 'AFTER', 'OTHER']], 'file' => ['type' => 'string', 'format' => 'binary']]]]]];
+            return ['required' => true, 'content' => ['multipart/form-data' => ['schema' => ['type' => 'object', 'required' => ['entity_type', 'entity_id', 'media_role', 'file'], 'properties' => ['entity_type' => ['type' => 'string', 'enum' => ['REQUEST', 'WORK_ORDER']], 'entity_id' => ['type' => 'string'], 'media_role' => ['type' => 'string', 'enum' => ['REQUEST', 'BEFORE', 'DURING', 'AFTER', 'SIGNATURE', 'OTHER']], 'file' => ['type' => 'string', 'format' => 'binary']]]]]];
         }
 
         $example = $this->requestExample($method, $path);

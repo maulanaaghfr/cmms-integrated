@@ -3,13 +3,13 @@ import {
   AlertTriangle, ArrowRight, Check, CheckCircle2, Clock, ClipboardList, History,
   MapPin, MessageSquare, Pause, Play, Plus, Send, Sparkles, UserPlus, Users, Wrench,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useApp } from "../store/store";
 import { Button, Card, Field, Input, Modal, PageHeader, Pill, Reveal, SearchInput, Select, StatCard, Table, Textarea } from "../components/kit";
 import { listAssets } from "../lib/assets";
 import { listSites, listUsers } from "../lib/organization";
-import { createWorkOrder, getWorkOrder, listWorkOrders, startTimer, stopTimer, workOrderAction } from "../lib/workorders";
+import { createWorkOrder, getWorkOrder, listWorkOrders, startTimer, stopTimer, workOrderAction, recommendTechnicians } from "../lib/workorders";
 import { addComment } from "../lib/requests";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -34,7 +34,7 @@ const tone = (value) => ({
   COMPLETED: "success", CLOSED: "success", VERIFIED: "success", REJECTED: "danger", CANCELLED: "muted",
   IN_PROGRESS: "accent", ON_HOLD: "warning", OPEN: "primary", ASSIGNED: "primary", PENDING_APPROVAL: "muted",
 }[value] || "primary");
-const emptyForm = { asset_id: "", title: "", description: "", priority: "MEDIUM", due_at: "" };
+const emptyForm = { asset_id: "", title: "", description: "", priority: "MEDIUM", due_at: "", checklist: [""] };
 
 function StatusDot({ status }) {
   const dotClass = ({
@@ -61,6 +61,7 @@ function Avatar({ name, size = "h-7 w-7" }) {
 
 export default function WorkOrders() {
   const { user } = useApp();
+  const [searchParams] = useSearchParams();
   const role = String(user?._backend?.membership?.roleKey || user?.role || "").toUpperCase();
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
@@ -75,6 +76,7 @@ export default function WorkOrders() {
   const [form, setForm] = useState(null);
   const [detail, setDetail] = useState(null);
   const [assignment, setAssignment] = useState("");
+  const [recommendations, setRecommendations] = useState([]);
   const [note, setNote] = useState("");
   const [comment, setComment] = useState("");
   // Not every membership has a roleKey populated depending on how the backend
@@ -102,6 +104,10 @@ export default function WorkOrders() {
     } finally { setLoading(false); }
   }, [status]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const assetId = searchParams.get("asset_id");
+    if (assetId && assets.some((asset) => asset.id === assetId) && !form && !detail) setForm({ ...emptyForm, asset_id: assetId });
+  }, [assets, searchParams, form, detail]);
 
   const rows = useMemo(() => orders
     .filter((item) => `${item.work_order_number || ""} ${item.title || ""}`.toLowerCase().includes(query.toLowerCase()))
@@ -130,12 +136,18 @@ export default function WorkOrders() {
   const assignedName = (id) => technicians.find((member) => member.id === id)?.full_name || "";
 
   const openDetail = async (order) => {
-    try { const response = await getWorkOrder(order.id); setDetail(response.data); setAssignment(response.data.current_assignee_id || ""); setNote(""); setComment(""); }
-    catch (error) { toast.error(error.message || "Gagal memuat detail work order."); }
+    try {
+      const [response, recommendationResponse] = await Promise.all([getWorkOrder(order.id), recommendTechnicians(order.id).catch(() => ({ data: { recommendations: [] } }))]);
+      setDetail(response.data); setAssignment(response.data.current_assignee_id || "");
+      setRecommendations(recommendationResponse.data?.recommendations || []);
+      setNote(""); setComment("");
+    } catch (error) { toast.error(error.message || "Gagal memuat detail work order."); }
   };
   const save = async () => {
     if (!form.asset_id || !form.title.trim() || !form.description.trim()) return toast.error("Aset, judul, dan deskripsi wajib diisi.");
-    try { await createWorkOrder({ ...form, due_at: form.due_at || null }); toast.success("Work order dikirim untuk persetujuan manager."); setForm(null); load(); }
+    const checklist = (form.checklist || []).map((item) => item.trim()).filter(Boolean);
+    if (!checklist.length) return toast.error("Tambahkan minimal satu checklist pekerjaan.");
+    try { await createWorkOrder({ ...form, checklist, due_at: form.due_at || null }); toast.success("Work order dikirim untuk persetujuan manager."); setForm(null); load(); }
     catch (error) { toast.error(error.message || "Work order gagal dibuat."); }
   };
   const act = async (action, body = {}) => {
@@ -308,6 +320,12 @@ export default function WorkOrders() {
             </Field>
             <Field label="Judul" required><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Contoh: Ganti bearing motor pompa" /></Field>
             <Field label="Deskripsi" required><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} /></Field>
+            <Field label="Checklist wajib" required>
+              <div className="space-y-2">
+                {(form.checklist || [""]).map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, i) => i === index ? event.target.value : value) })} placeholder={`Langkah ${index + 1}`} /><Button variant="ghost" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, i) => i !== index) })}>Hapus</Button></div>)}
+                <Button variant="ghost" onClick={() => setForm({ ...form, checklist: [...(form.checklist || []), ""] })}>+ Tambah langkah</Button>
+              </div>
+            </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Prioritas">
                 <Select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
@@ -365,9 +383,10 @@ export default function WorkOrders() {
                 <Field label="Pilih teknisi">
                   <Select value={assignment} onChange={(event) => setAssignment(event.target.value)} disabled={!technicians.length}>
                     <option value="">{technicians.length ? "Pilih teknisi" : "Belum ada teknisi aktif"}</option>
-                    {technicians.map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
+                    {(recommendations.length ? recommendations : technicians.map((item) => ({ technician_id: item.id, full_name: item.full_name, availability: "UNKNOWN", active_work_orders: 0, specialty_match: false }))).map((item) => <option key={item.technician_id} value={item.technician_id}>{item.full_name} — {item.specialty_match ? "specialty cocok" : "umum"} · {item.availability === "AVAILABLE" ? "tersedia" : item.availability === "BUSY" ? "sibuk" : "status belum dihitung"} · {item.active_work_orders} WO aktif</option>)}
                   </Select>
                 </Field>
+                {recommendations.length > 0 && <p className="mt-2 text-[11px] text-muted-foreground">Urutan rekomendasi mempertimbangkan specialty tim, site aset, dan jumlah WO aktif.</p>}
                 {technicians.length ? (
                   <Button className="mt-3" onClick={() => assignment ? act("assign", { assignee_id: assignment }) : toast.error("Pilih teknisi terlebih dahulu.")}><UserPlus className="h-4 w-4" /> Tugaskan</Button>
                 ) : (

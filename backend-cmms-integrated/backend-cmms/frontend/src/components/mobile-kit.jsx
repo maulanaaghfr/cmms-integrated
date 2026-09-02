@@ -53,25 +53,47 @@ export function SlaBadge({ w }) {
 /* ------------------------------ barcode scanner --------------------------- */
 export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }) {
   const videoRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const onDetectRef = useRef(onDetect);
   const [manual, setManual] = useState("");
   const [camOn, setCamOn] = useState(false);
   const streamRef = useRef(null);
 
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => { onDetectRef.current = onDetect; }, [onDetect]);
+
   useEffect(() => {
     if (!open) return;
     let active = true;
+    let scanTimer = null;
     navigator.mediaDevices?.getUserMedia?.({ video: { facingMode: "environment" } })
       .then((stream) => {
         if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCamOn(true);
+        if ("BarcodeDetector" in window) {
+          const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"] });
+          scanTimer = window.setInterval(async () => {
+            if (!videoRef.current || !active) return;
+            try {
+              const [result] = await detector.detect(videoRef.current);
+              if (result?.rawValue) {
+                active = false;
+                if (scanTimer) window.clearInterval(scanTimer);
+                onDetectRef.current?.(result.rawValue.trim().toUpperCase());
+                onCloseRef.current?.();
+              }
+            } catch { /* keep manual fallback available */ }
+          }, 700);
+        }
       })
       .catch(() => setCamOn(false));
     return () => {
       active = false;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      if (scanTimer) window.clearInterval(scanTimer);
     };
   }, [open]);
 

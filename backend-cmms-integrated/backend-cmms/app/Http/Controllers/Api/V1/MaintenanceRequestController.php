@@ -82,7 +82,13 @@ class MaintenanceRequestController extends Controller
             DB::table('maintenance_requests')->where('id', $locked->id)->update(['status' => 'CONVERTED', 'approved_at' => now(), 'approved_by' => $actor->id, 'lock_version' => DB::raw('lock_version + 1'), 'updated_at' => now()]);
             $this->history($locked->id, 'PENDING_APPROVAL', 'CONVERTED', $actor->id, $data['note'] ?? null);
 
-            return $this->workOrders->create($asset, $actor, ['title' => $locked->title, 'description' => $locked->description, 'priority' => $locked->priority, 'requester_id' => $locked->requester_id, ...$data], 'REQUEST', $locked->id);
+            return $this->workOrders->create($asset, $actor, [
+                'title' => $locked->title, 'description' => $locked->description, 'priority' => $locked->priority,
+                'requester_id' => $locked->requester_id, 'checklist' => [
+                    'Verifikasi kondisi aset dan area kerja', 'Lakukan perbaikan sesuai instruksi WO',
+                    'Uji fungsi aset setelah perbaikan', 'Bersihkan area kerja dan pastikan aman',
+                ], ...$data,
+            ], 'REQUEST', $locked->id);
         });
         $this->notifications->send($row->requester_id, 'request.approved', 'REQUEST', $row->id, 'Request approved', $row->title);
         $this->audit->tenant($request, 'request.approved', 'REQUEST', $row->id, $row, ['work_order_id' => $workOrder->id]);

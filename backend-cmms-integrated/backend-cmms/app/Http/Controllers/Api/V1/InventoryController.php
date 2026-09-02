@@ -136,12 +136,13 @@ class InventoryController extends Controller
         $data = $this->sparePartData($request);
         $this->scope->site($request->attributes->get('tenant_user'), $data['site_id']);
         $id = (string) Str::ulid();
+        $barcode = filled($data['barcode'] ?? null) ? $data['barcode'] : 'SP-'.$id;
         DB::table('spare_parts')->insert([
             'id' => $id, ...$data,
             'spare_part_category_id' => $data['spare_part_category_id'] ?? null,
             'description' => $data['description'] ?? null,
             'unit' => $data['unit'] ?? 'pcs',
-            'barcode' => $data['barcode'] ?? null,
+            'barcode' => $barcode,
             'min_stock' => $data['min_stock'] ?? 0,
             'reorder_point' => $data['reorder_point'] ?? 0,
             'unit_cost' => $data['unit_cost'] ?? null,
@@ -159,6 +160,9 @@ class InventoryController extends Controller
         $actor = $request->attributes->get('tenant_user');
         $before = $this->scope->sparePart($actor, $sparePart);
         $data = $this->sparePartData($request, true, $sparePart);
+        if (array_key_exists('barcode', $data) && blank($data['barcode'])) {
+            $data['barcode'] = 'SP-'.$sparePart;
+        }
         if (isset($data['site_id'])) {
             $this->scope->site($actor, $data['site_id']);
         }

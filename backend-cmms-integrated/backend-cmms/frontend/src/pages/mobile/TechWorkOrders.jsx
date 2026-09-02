@@ -7,8 +7,9 @@ import {
 } from "lucide-react";
 import { useApp } from "../../store/store";
 import { Sheet, ScannerSheet, SignaturePad, GpsButton, PhotoCapture, SlaBadge } from "../../components/mobile-kit";
-import { listWorkOrders, getWorkOrder, workOrderAction, startTimer, stopTimer } from "../../lib/workorders";
-import { addComment } from "../../lib/requests";
+import { listWorkOrders, getWorkOrder, workOrderAction, startTimer, stopTimer, recordWorkOrderPart, updateWorkOrderChecklist, signWorkOrder } from "../../lib/workorders";
+import { addComment, uploadAttachment } from "../../lib/requests";
+import { listWarehouses } from "../../lib/inventory";
 
 const FILTERS = [
   { key: "active", label: "Aktif" },
@@ -117,6 +118,13 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
   const [tab, setTab] = useState("overview");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [barcode, setBarcode] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [warehouseId, setWarehouseId] = useState("");
+  const [warehouses, setWarehouses] = useState([]);
+  const [photos, setPhotos] = useState({ BEFORE: [], DURING: [], AFTER: [] });
+  const [signatureOpen, setSignatureOpen] = useState(false);
 
   const act = async (action, body = {}) => {
     setSaving(true);
@@ -150,11 +158,75 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
 
   const TABS = [
     { k: "overview", label: "Info", icon: ListChecks },
+    { k: "checklist", label: "Checklist", icon: Check },
+    { k: "evidence", label: "Bukti Foto", icon: Camera },
     { k: "time", label: "Timer", icon: Clock },
     { k: "notes", label: "Catatan", icon: MessageSquare },
+    { k: "parts", label: "Part / Barcode", icon: Package },
   ];
 
   const isAssignee = d.current_assignee_id === user?.tenantUserId;
+
+  useEffect(() => {
+    if (tab !== "parts" || warehouses.length) return;
+    listWarehouses().then((res) => {
+      const rows = res.data || [];
+      setWarehouses(rows);
+      setWarehouseId(rows[0]?.id || "");
+    }).catch((err) => toast.error(err.message || "Gagal memuat gudang."));
+  }, [tab, warehouses.length]);
+
+  const updateChecklist = async (item, checked) => {
+    setSaving(true);
+    try {
+      await updateWorkOrderChecklist(d.id, item.id, { is_completed: checked, note: item.note || null });
+      toast.success(checked ? "Checklist selesai." : "Checklist dibuka kembali.");
+      onRefresh();
+    } catch (err) { toast.error(err.message || "Gagal menyimpan checklist."); }
+    finally { setSaving(false); }
+  };
+
+  const dataUrlToFile = async (dataUrl, name) => {
+    const res = await fetch(dataUrl);
+    return new File([await res.blob()], name, { type: "image/png" });
+  };
+
+  const addPhoto = async (role, photo) => {
+    setPhotos((current) => ({ ...current, [role]: [...current[role], photo] }));
+    try {
+      await uploadAttachment("WORK_ORDER", d.id, await dataUrlToFile(photo.url, `${role.toLowerCase()}-${Date.now()}.png`), role);
+      toast.success(`Foto ${role.toLowerCase()} tersimpan.`);
+      onRefresh();
+    } catch (err) { toast.error(err.message || "Gagal menyimpan foto."); }
+  };
+
+  const saveSignature = async (signatureData) => {
+    setSaving(true);
+    try {
+      await signWorkOrder(d.id, { signature_data: signatureData });
+      setSignatureOpen(false);
+      toast.success("Tanda tangan digital tersimpan.");
+      onRefresh();
+    } catch (err) { toast.error(err.message || "Gagal menyimpan tanda tangan."); }
+    finally { setSaving(false); }
+  };
+
+  const recordPart = async () => {
+    if (!barcode.trim()) return toast.error("Scan atau masukkan barcode part.");
+    if (!warehouseId) return toast.error("Pilih gudang asal part.");
+    setSaving(true);
+    try {
+      await recordWorkOrderPart(d.id, { barcode: barcode.trim().toUpperCase(), warehouse_id: warehouseId, quantity: Number(quantity) });
+      toast.success("Pemakaian part dicatat dan stok dikurangi.");
+      setBarcode("");
+      setQuantity(1);
+      onRefresh();
+    } catch (err) {
+      toast.error(err.message || "Gagal mencatat pemakaian part.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Sheet open onClose={onClose} title={`${d.work_order_number || d.id} — ${d.title}`}>
@@ -196,6 +268,36 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
                 <Check className="h-3.5 w-3.5" /> Selesaikan
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {tab === "checklist" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-border p-3 text-xs text-muted-foreground">Semua checklist wajib diselesaikan sebelum WO dapat dikirim ke approval Manager.</div>
+          {(d.checklist || []).length === 0 && <p className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada checklist pada WO ini.</p>}
+          {(d.checklist || []).map((item) => (
+            <label key={item.id} className="flex items-start gap-3 rounded-xl border border-border p-3">
+              <input type="checkbox" checked={!!item.is_completed} disabled={!isAssignee || d.status !== "IN_PROGRESS" || saving} onChange={(e) => updateChecklist(item, e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+              <span className={item.is_completed ? "text-sm text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{item.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {tab === "evidence" && (
+        <div className="space-y-5">
+          {['BEFORE', 'DURING', 'AFTER'].map((role) => (
+            <div key={role} className="rounded-2xl border border-border p-3">
+              <p className="mb-2 text-xs font-bold text-foreground">Foto {role.toLowerCase()}</p>
+              <PhotoCapture photos={photos[role]} onAdd={(photo) => addPhoto(role, photo)} onRemove={(i) => setPhotos((current) => ({ ...current, [role]: current[role].filter((_, index) => index !== i) }))} />
+              <p className="mt-2 text-[11px] text-muted-foreground">Foto disimpan ke audit trail Work Order.</p>
+            </div>
+          ))}
+          <div className="rounded-2xl border border-border p-3">
+            <div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold text-foreground">Tanda tangan teknisi</p><PenLine className="h-4 w-4 text-primary" /></div>
+            {d.signatures?.length ? <p className="text-xs text-emerald-600">Tersimpan pada {new Date(d.signatures[0].signed_at).toLocaleString("id-ID")}</p> : <button onClick={() => setSignatureOpen(true)} disabled={!isAssignee || d.status !== "IN_PROGRESS"} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">Ambil Tanda Tangan</button>}
+            {signatureOpen && <div className="mt-3"><SignaturePad onSave={saveSignature} /></div>}
           </div>
         </div>
       )}
@@ -253,6 +355,43 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === "parts" && (
+        <div className="space-y-3">
+          {isAssignee && d.status === "IN_PROGRESS" ? (
+            <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-3 space-y-3">
+              <p className="text-xs font-semibold text-foreground">Scan part yang dipakai</p>
+              <div className="flex gap-2">
+                <input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Barcode / kode part"
+                  className="min-w-0 flex-1 rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+                <button onClick={() => setScannerOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"><ScanLine className="h-4 w-4" /> Scan</button>
+              </div>
+              <div className="grid grid-cols-[1fr_88px] gap-2">
+                <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="rounded-xl border bg-background px-3 py-2.5 text-sm">
+                  <option value="">Pilih gudang...</option>
+                  {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+                </select>
+                <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="rounded-xl border bg-background px-3 py-2.5 text-sm" />
+              </div>
+              <button onClick={recordPart} disabled={saving} className="w-full rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {saving ? "Mencatat..." : "Gunakan Part"}
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">Part hanya dapat dicatat oleh teknisi yang ditugaskan saat WO sedang dikerjakan.</p>
+          )}
+          <div className="space-y-2">
+            {(d.parts || []).length === 0 && <p className="text-xs text-muted-foreground">Belum ada part yang digunakan.</p>}
+            {(d.parts || []).map((part) => (
+              <div key={part.id} className="flex items-center justify-between rounded-xl border border-border p-3 text-sm">
+                <div><p className="font-semibold text-foreground">{part.name}</p><p className="text-xs text-muted-foreground">{part.code} · {part.warehouse_name}</p></div>
+                <span className="font-semibold text-foreground">×{part.quantity} {part.unit}</span>
+              </div>
+            ))}
+          </div>
+          <ScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onDetect={setBarcode} title="Scan barcode spare part" />
         </div>
       )}
 

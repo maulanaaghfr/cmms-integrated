@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search, AlertTriangle } from "lucide-react";
+import JsBarcode from "jsbarcode";
 
 /* ------------------------------- buttons ------------------------------- */
 export function Button({ children, variant = "primary", className = "", ...props }) {
@@ -337,6 +338,27 @@ export function QRCode({ value = "", size = 132 }) {
       )}
     </svg>
   );
+}
+
+/* ---------------------------- scannable barcode ------------------------- */
+export function Barcode({ value, height = 48, width = 1.25, className = "" }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current || !value) return;
+    JsBarcode(ref.current, value, {
+      format: "CODE128",
+      displayValue: true,
+      fontSize: 11,
+      height,
+      margin: 4,
+      width,
+      lineColor: "#0f172a",
+      background: "#ffffff",
+    });
+  }, [value, height, width]);
+
+  return value ? <svg ref={ref} className={`max-w-full rounded bg-white ${className}`} aria-label={`Barcode ${value}`} /> : null;
 }
 
 /* -------------------------------- stat --------------------------------- */

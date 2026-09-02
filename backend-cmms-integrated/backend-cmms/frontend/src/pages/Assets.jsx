@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Pencil, Trash2, Eye, Boxes, AlertTriangle, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "../store/store";
@@ -10,6 +11,7 @@ import {
   listAssets, getAsset, createAsset, updateAsset, archiveAsset,
   listAssetCategories, listSites, listLocations,
 } from "../lib/assets";
+import { AssetQr } from "../components/CodeTools";
 
 /* Real DB enums — see database/migrations/tenant/..._create_organization_and_asset_tables.php */
 const STATUSES = ["OPERATIONAL", "UNDER_MAINTENANCE", "DOWN", "STANDBY", "OUT_OF_SERVICE"];
@@ -33,6 +35,8 @@ const blank = {
 
 export default function Assets() {
   const { user } = useApp();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const canEdit = user?.role === "company_admin" || user?.role === "manager";
 
   const [loading, setLoading] = useState(true);
@@ -97,6 +101,12 @@ export default function Assets() {
       toast.error(err.message || "Gagal memuat detail aset.");
     }
   };
+
+  useEffect(() => {
+    const assetId = searchParams.get("asset_id");
+    const asset = assets.find((item) => item.id === assetId);
+    if (asset && !view) openView(asset);
+  }, [assets, searchParams, view]);
 
   const locationsForSite = (siteId) => locations.filter((l) => l.site_id === siteId);
 
@@ -269,6 +279,10 @@ export default function Assets() {
               <div><div className="text-xs text-muted-foreground">Serial Number</div><div className="font-medium text-foreground">{view.serial_number || "-"}</div></div>
               <div><div className="text-xs text-muted-foreground">Barcode</div><div className="font-medium text-foreground">{view.barcode || "-"}</div></div>
               <div><div className="text-xs text-muted-foreground">Tgl Instalasi</div><div className="font-medium text-foreground">{view.installation_date || "-"}</div></div>
+            </div>
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4 sm:flex-row sm:items-start">
+              <AssetQr value={`${window.location.origin}/assets?asset_id=${view.id}`} size={150} />
+              <div className="flex-1 text-center sm:text-left"><p className="text-sm font-semibold">QR Asset/Mesin</p><p className="mt-1 text-xs text-muted-foreground">Scan untuk membuka detail asset ini.</p><div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start"><Button onClick={() => navigate(`/work-orders?asset_id=${view.id}`)}>Buat Work Order</Button><Button variant="ghost" onClick={() => window.print()}>Print QR</Button></div></div>
             </div>
             {view.description && (
               <div><div className="mb-1 text-xs text-muted-foreground">Deskripsi</div><p className="text-sm text-foreground">{view.description}</p></div>
