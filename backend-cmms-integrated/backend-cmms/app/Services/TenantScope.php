@@ -45,11 +45,28 @@ class TenantScope
         return match ($tenantUser->role_key) {
             'COMPANY_ADMIN' => $query,
             'MANAGER', 'SUPERVISOR', 'VIEWER' => $query->where('site_id', $tenantUser->primary_site_id),
-            'TECHNICIAN' => $query->whereIn('site_id', DB::table('teams')
-                ->join('team_members', 'team_members.team_id', '=', 'teams.id')
-                ->where('team_members.tenant_user_id', $tenantUser->id)
-                ->where('team_members.is_active', true)
-                ->select('teams.site_id')),
+            'TECHNICIAN' => $query->where(function (Builder $q) use ($tenantUser): void {
+                // Base scope: assets in sites covered by the technician's active team(s).
+                $q->whereIn('site_id', DB::table('teams')
+                    ->join('team_members', 'team_members.team_id', '=', 'teams.id')
+                    ->where('team_members.tenant_user_id', $tenantUser->id)
+                    ->where('team_members.is_active', true)
+                    ->select('teams.site_id'))
+                    // Extra scope: also allow any asset the technician has an
+                    // assigned Work Order for, even if that asset's site is
+                    // outside their team's normal coverage. Without this, a
+                    // technician assigned cross-site (or ad-hoc) gets blocked
+                    // from opening the Asset Detail page / scanning its QR,
+                    // even though they can already see the Work Order itself.
+                    ->orWhereIn('id', DB::table('work_orders')
+                        ->where('current_assignee_id', $tenantUser->id)
+                        ->select('asset_id'))
+                    ->orWhereIn('id', DB::table('work_order_assignments')
+                        ->join('work_orders', 'work_orders.id', '=', 'work_order_assignments.work_order_id')
+                        ->where('work_order_assignments.technician_id', $tenantUser->id)
+                        ->where('work_order_assignments.is_current', true)
+                        ->select('work_orders.asset_id'));
+            }),
             'OPERATOR' => $query->whereIn('id', DB::table('asset_operator_assignments')
                 ->where('tenant_user_id', $tenantUser->id)
                 ->where('is_active', true)
@@ -104,7 +121,16 @@ class TenantScope
         $query = DB::table('work_orders');
 
         return match ($tenantUser->role_key) {
-            'TECHNICIAN' => $query->where('current_assignee_id', $tenantUser->id),
+            'TECHNICIAN' => $query->where(function (Builder $q) use ($tenantUser): void {
+                $q->where('work_orders.current_assignee_id', $tenantUser->id)
+                    ->orWhereExists(function ($assignment) use ($tenantUser): void {
+                        $assignment->selectRaw('1')
+                            ->from('work_order_assignments')
+                            ->whereColumn('work_order_assignments.work_order_id', 'work_orders.id')
+                            ->where('work_order_assignments.technician_id', $tenantUser->id)
+                            ->where('work_order_assignments.is_current', true);
+                    });
+            }),
             'OPERATOR' => $query->where('requester_id', $tenantUser->id),
             default => $query->whereIn('asset_id', $this->assets($tenantUser)->select('id')),
         };

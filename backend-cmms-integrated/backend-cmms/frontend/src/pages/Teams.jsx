@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, UsersRound } from "lucide-react";
+import { Pencil, Plus, Trash2, UsersRound, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Button, Card, ConfirmDialog, Field, IconButton, Input, Modal, PageHeader,
   Pill, Reveal, SearchInput, Select,
 } from "../components/kit";
 import {
-  archiveTeam, createTeam, listSites, listTeams, listUsers, updateTeam,
+  addTeamMember, archiveTeam, createTeam, getTeam, listSites, listTeams,
+  listUsers, removeTeamMember, updateTeam,
 } from "../lib/organization";
 
 /* ------------------------------------------------------------------ */
@@ -30,6 +31,11 @@ export default function Teams() {
   const [teamForm, setTeamForm] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [memberDetailLoading, setMemberDetailLoading] = useState(false);
+  const [newMemberUserId, setNewMemberUserId] = useState("");
+  const [newMemberType, setNewMemberType] = useState("MEMBER");
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +64,74 @@ export default function Teams() {
     .filter((t) => siteFilter === "all" || t.site_id === siteFilter)
     .filter((t) => `${t.code || ""} ${t.name} ${t.specialty || ""}`.toLowerCase().includes(query.toLowerCase())),
   [teams, query, siteFilter]);
+
+  /* --------------------------- member management ------------------------- */
+
+  const openDetail = async (team) => {
+    setSelectedTeam(team);
+    setNewMemberUserId("");
+    setNewMemberType("MEMBER");
+    setMemberDetailLoading(true);
+    try {
+      const response = await getTeam(team.id);
+      setSelectedTeam(response?.data || team);
+    } catch (error) {
+      toast.error(error.message || "Failed to load team members.");
+    } finally {
+      setMemberDetailLoading(false);
+    }
+  };
+
+  const refreshSelectedTeam = async (teamId) => {
+    try {
+      const response = await getTeam(teamId);
+      setSelectedTeam(response?.data || null);
+    } catch (error) {
+      toast.error(error.message || "Failed to refresh team members.");
+    }
+    load();
+  };
+
+  // Only active users based at the same site as the team, and not already
+  // an active member, are valid picks — mirrors the backend's
+  // TEAM_MEMBER_SITE_MISMATCH check in OrganizationController@addTeamMember.
+  const availableMemberOptions = useMemo(() => {
+    if (!selectedTeam) return [];
+    const existingIds = new Set((selectedTeam.members || []).map((m) => m.tenant_user_id));
+    return users.filter((u) => u.status === "ACTIVE" && u.primary_site_id === selectedTeam.site_id && !existingIds.has(u.id));
+  }, [users, selectedTeam]);
+
+  const addMember = async () => {
+    if (!newMemberUserId) {
+      toast.error("Select a technician to add.");
+      return;
+    }
+    setAddingMember(true);
+    try {
+      await addTeamMember(selectedTeam.id, { tenant_user_id: newMemberUserId, member_type: newMemberType });
+      toast.success("Member added to the team.");
+      setNewMemberUserId("");
+      setNewMemberType("MEMBER");
+      await refreshSelectedTeam(selectedTeam.id);
+    } catch (error) {
+      toast.error(error.message || "Failed to add member.");
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const removeMember = async (tenantUserId) => {
+    setRemovingMemberId(tenantUserId);
+    try {
+      await removeTeamMember(selectedTeam.id, tenantUserId);
+      toast.success("Member removed from the team.");
+      await refreshSelectedTeam(selectedTeam.id);
+    } catch (error) {
+      toast.error(error.message || "Failed to remove member.");
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
 
   /* --------------------------- create / edit ------------------------- */
 
@@ -124,7 +198,7 @@ export default function Teams() {
           return (
             <div
               key={team.id}
-              onClick={() => setSelectedTeam(team)}
+              onClick={() => openDetail(team)}
               className="cursor-pointer rounded-xl border border-border/80 bg-background p-4 transition hover:border-primary/50 hover:shadow-sm"
             >
               <div className="flex items-start justify-between gap-3">
@@ -165,6 +239,7 @@ export default function Teams() {
         open={!!selectedTeam}
         onClose={() => setSelectedTeam(null)}
         title="Team Detail"
+        wide
         footer={
           <>
             <Button variant="ghost" onClick={() => setSelectedTeam(null)}>Close</Button>
@@ -173,15 +248,66 @@ export default function Teams() {
         }
       >
         {selectedTeam && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <h4 className="font-display text-base font-extrabold">{selectedTeam.name}</h4>
             <dl className="space-y-3 text-sm">
               <div className="flex items-center justify-between"><dt className="text-muted-foreground">Site</dt><dd className="font-medium text-foreground">{siteName(selectedTeam.site_id)}</dd></div>
               <div className="flex items-center justify-between"><dt className="text-muted-foreground">Supervisor</dt><dd className="font-medium text-foreground">{selectedTeam.supervisor_user_id ? userName(selectedTeam.supervisor_user_id) : "—"}</dd></div>
               <div className="flex items-center justify-between"><dt className="text-muted-foreground">Specialty</dt><dd className="font-medium text-foreground">{selectedTeam.specialty || "—"}</dd></div>
-              <div className="flex items-center justify-between"><dt className="text-muted-foreground">Members</dt><dd className="font-medium text-foreground">{memberCount(selectedTeam) ?? 0} technicians</dd></div>
               <div className="flex items-center justify-between"><dt className="text-muted-foreground">Status</dt><dd className="font-medium text-foreground">{selectedTeam.is_active ? "Active" : "Inactive"}</dd></div>
             </dl>
+
+            <div className="border-t pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h5 className="text-sm font-bold text-foreground">Members</h5>
+                <span className="text-xs text-muted-foreground">{(selectedTeam.members || []).length} technician{(selectedTeam.members || []).length === 1 ? "" : "s"}</span>
+              </div>
+
+              {memberDetailLoading ? (
+                <p className="py-3 text-xs text-muted-foreground">Loading members...</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {(selectedTeam.members || []).length === 0 && (
+                    <p className="rounded-lg border border-dashed py-3 text-center text-xs text-muted-foreground">No members yet. Add one below.</p>
+                  )}
+                  {(selectedTeam.members || []).map((member) => (
+                    <div key={member.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{member.full_name}</p>
+                        <p className="text-[11px] text-muted-foreground">{member.role_key}{member.member_type === "LEAD" ? " · Lead" : ""}</p>
+                      </div>
+                      <IconButton
+                        title="Remove from team"
+                        className="h-7 w-7 shrink-0 hover:text-destructive"
+                        disabled={removingMemberId === member.tenant_user_id}
+                        onClick={() => removeMember(member.tenant_user_id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </IconButton>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Select className="flex-1" value={newMemberUserId} onChange={(e) => setNewMemberUserId(e.target.value)}>
+                  <option value="">
+                    {availableMemberOptions.length === 0 ? "No eligible users at this site" : "Select a technician..."}
+                  </option>
+                  {availableMemberOptions.map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name} ({u.role_key})</option>
+                  ))}
+                </Select>
+                <Select className="sm:w-32" value={newMemberType} onChange={(e) => setNewMemberType(e.target.value)}>
+                  <option value="MEMBER">Member</option>
+                  <option value="LEAD">Lead</option>
+                </Select>
+                <Button className="sm:w-auto" onClick={addMember} disabled={addingMember || !newMemberUserId}>
+                  <UserPlus className="h-4 w-4" /> {addingMember ? "Adding..." : "Add"}
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">Only active users whose primary site matches this team's site ({siteName(selectedTeam.site_id)}) can be added.</p>
+            </div>
           </div>
         )}
       </Modal>

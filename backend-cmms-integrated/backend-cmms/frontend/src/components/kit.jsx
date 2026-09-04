@@ -8,6 +8,7 @@ export function Button({ children, variant = "primary", className = "", ...props
   const styles = {
     primary: "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:brightness-110",
     ghost: "border bg-background text-foreground hover:bg-muted",
+    outline: "border border-primary/30 bg-transparent text-primary hover:bg-primary/5",
     danger: "bg-destructive text-destructive-foreground hover:brightness-110",
     accent: "bg-accent text-accent-foreground hover:brightness-110",
   };

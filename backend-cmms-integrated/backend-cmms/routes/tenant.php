@@ -24,6 +24,13 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
             Route::get('sites/{site}', [OrganizationController::class, 'site'])->middleware('tenant.feature:core.assets');
             Route::get('locations', [OrganizationController::class, 'locations'])->middleware('tenant.feature:core.assets');
             Route::get('locations/{location}', [OrganizationController::class, 'location'])->middleware('tenant.feature:core.assets');
+            // Must be registered before 'users/{user}' or the {user} wildcard
+            // would swallow the literal "me" segment. Not gated behind the
+            // core.teams feature flag: resolving "who am I" is basic session
+            // identity, not a Teams-management feature, and every role
+            // (including TECHNICIAN with no team yet) must always be able
+            // to call it.
+            Route::get('users/me', [OrganizationController::class, 'me']);
             Route::get('users', [OrganizationController::class, 'users'])->middleware('tenant.feature:core.teams');
             Route::get('users/{user}', [OrganizationController::class, 'user'])->middleware('tenant.feature:core.teams');
             Route::get('teams', [OrganizationController::class, 'teams'])->middleware('tenant.feature:core.teams');
@@ -178,4 +185,3 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
             Route::post('payments/{payment}/check-status', [BillingController::class, 'checkStatus']);
         });
     });
-    

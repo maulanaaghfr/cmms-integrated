@@ -1,9 +1,40 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, X, ScanLine, MapPin, Navigation, Eraser, Check, WifiOff, Wifi } from "lucide-react";
+import { Camera, X, ScanLine, MapPin, Navigation, Eraser, Check, WifiOff, Wifi, Image as ImageIcon, Upload } from "lucide-react";
 import { toast } from "sonner";
+import jsQR from "jsqr";
 
 export const SLA_HOURS = { Critical: 4, High: 24, Medium: 72, Low: 168 };
+
+/**
+ * Loads a File/Blob as an <img> element instead of using createImageBitmap().
+ * createImageBitmap() throws the native "The source image could not be
+ * decoded" error on plenty of real-world files (iPhone HEIC saved as .jpg,
+ * screenshots with unusual color profiles, some PNG variants, etc). A plain
+ * <img> element is decoded by the browser's normal image pipeline, which is
+ * far more tolerant, and both BarcodeDetector and <canvas> accept it directly.
+ */
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Gambar tidak dapat dibaca. Coba file JPG/PNG lain atau ambil ulang screenshot-nya."));
+    img.src = src;
+  });
+}
+
+/**
+ * Uppercasing every scanned value broke asset QR codes: they encode a full
+ * URL like "https://app/assets?asset_id=xxxx", and query string keys/values
+ * are case sensitive — "ASSET_ID" is NOT the same param as "asset_id". Plain
+ * part/spare-part barcodes still get uppercased for consistent matching, but
+ * URL-shaped values (asset QR codes) are passed through untouched.
+ */
+function normalizeScanValue(value) {
+  const v = (value || "").trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return v;
+  return v.toUpperCase();
+}
 
 /* ------------------------------ bottom sheet ----------------------------- */
 export function Sheet({ open, onClose, title, children }) {
@@ -58,6 +89,9 @@ export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }
   const [manual, setManual] = useState("");
   const [camOn, setCamOn] = useState(false);
   const streamRef = useRef(null);
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => { onDetectRef.current = onDetect; }, [onDetect]);
@@ -72,21 +106,34 @@ export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCamOn(true);
-        if ("BarcodeDetector" in window) {
-          const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"] });
-          scanTimer = window.setInterval(async () => {
-            if (!videoRef.current || !active) return;
-            try {
+        const detector = "BarcodeDetector" in window
+          ? new window.BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"] })
+          : null;
+        scanTimer = window.setInterval(async () => {
+          if (!videoRef.current || !active) return;
+          try {
+            let rawValue = "";
+            if (detector) {
               const [result] = await detector.detect(videoRef.current);
-              if (result?.rawValue) {
-                active = false;
-                if (scanTimer) window.clearInterval(scanTimer);
-                onDetectRef.current?.(result.rawValue.trim().toUpperCase());
-                onCloseRef.current?.();
-              }
-            } catch { /* keep manual fallback available */ }
-          }, 700);
-        }
+              rawValue = result?.rawValue || "";
+            } else {
+              const canvas = canvasRef.current || document.createElement("canvas");
+              canvasRef.current = canvas;
+              canvas.width = videoRef.current.videoWidth || 640;
+              canvas.height = videoRef.current.videoHeight || 480;
+              const ctx = canvas.getContext("2d", { willReadFrequently: true });
+              ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+              const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+              rawValue = code?.data || "";
+            }
+            if (rawValue) {
+              active = false;
+              if (scanTimer) window.clearInterval(scanTimer);
+              onDetectRef.current?.(normalizeScanValue(rawValue));
+              onCloseRef.current?.();
+            }
+          } catch { /* keep manual fallback available */ }
+        }, 700);
       })
       .catch(() => setCamOn(false));
     return () => {
@@ -99,14 +146,85 @@ export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }
 
   const submit = () => {
     if (!manual.trim()) return toast.error("Masukkan kode barcode/QR.");
-    onDetect(manual.trim().toUpperCase());
+    onDetect(normalizeScanValue(manual));
     setManual("");
+  };
+
+  const scanImageFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type || !file.type.startsWith("image/")) {
+      toast.error("File yang dipilih bukan gambar. Pilih file JPG/PNG/screenshot.");
+      return;
+    }
+    setFileLoading(true);
+    let objectUrl = null;
+    try {
+      // Use an object URL + <img> element instead of createImageBitmap().
+      // createImageBitmap() is the source of the "source image could not be
+      // decoded" error on many real gallery photos/screenshots; the normal
+      // <img> decode pipeline handles them fine.
+      objectUrl = URL.createObjectURL(file);
+      const img = await loadImageElement(objectUrl);
+
+      // Keep the canvas a sane size for large phone photos (faster + avoids
+      // hitting browser canvas size limits on very large images).
+      const MAX_DIM = 1600;
+      const naturalWidth = img.naturalWidth || img.width;
+      const naturalHeight = img.naturalHeight || img.height;
+      if (!naturalWidth || !naturalHeight) throw new Error("Gambar kosong atau tidak valid.");
+      const scale = Math.min(1, MAX_DIM / Math.max(naturalWidth, naturalHeight));
+      const width = Math.max(1, Math.round(naturalWidth * scale));
+      const height = Math.max(1, Math.round(naturalHeight * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, width, height);
+
+      let rawValue = "";
+
+      // 1) Try the native BarcodeDetector directly on the <img> (fast path).
+      if ("BarcodeDetector" in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+          const [result] = await detector.detect(img);
+          rawValue = result?.rawValue || "";
+        } catch {
+          // Some browsers/images fail here too — fall through to jsQR below.
+        }
+      }
+
+      // 2) Fallback (or double-check) using jsQR on the drawn canvas pixels.
+      if (!rawValue) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const code = jsQR(imageData.data, width, height, { inversionAttempts: "attemptBoth" });
+        rawValue = code?.data || "";
+      }
+
+      if (!rawValue) throw new Error("QR tidak ditemukan pada gambar. Pastikan QR terlihat jelas, tidak buram, dan tidak terpotong.");
+      onDetectRef.current?.(normalizeScanValue(rawValue));
+      onCloseRef.current?.();
+    } catch (err) {
+      toast.error(err.message || "Gagal membaca QR dari gambar. Coba foto lain atau gunakan input manual.");
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setFileLoading(false);
+    }
   };
 
   return (
     <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-4">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black">
+        <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-3">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><ScanLine className="h-5 w-5" /></div>
+            <div><p className="text-sm font-bold text-foreground">Arahkan ke QR Asset</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Posisikan QR di dalam bingkai. Kamu juga bisa memilih gambar QR dari galeri.</p></div>
+          </div>
+        </div>
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-950 shadow-inner">
           {camOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
           ) : (
@@ -119,10 +237,17 @@ export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }
             <ScanLine className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 animate-pulse text-primary" />
           </div>
         </div>
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={scanImageFile} />
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={fileLoading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-3 text-xs font-bold text-primary transition hover:bg-primary/10 active:scale-[0.98] disabled:opacity-60">
+            {fileLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" /> : <ImageIcon className="h-4 w-4" />} {fileLoading ? "Membaca..." : "Pilih dari Galeri"}
+          </button>
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-3 text-[11px] font-medium text-muted-foreground"><Upload className="h-4 w-4" /> JPG, PNG, screenshot</div>
+        </div>
         <div className="flex gap-2">
-          <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Ketik kode (mis. SP-101 / AST-1101)"
+          <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Atau ketik kode QR/barcode..."
             className="flex-1 rounded-xl border bg-background px-3 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
-          <button onClick={submit} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground active:scale-95">Cari</button>
+          <button onClick={submit} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm active:scale-95">Cari</button>
         </div>
       </div>
     </Sheet>

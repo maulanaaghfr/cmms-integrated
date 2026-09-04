@@ -11,7 +11,7 @@ import {
   listAssets, getAsset, createAsset, updateAsset, archiveAsset,
   listAssetCategories, listSites, listLocations,
 } from "../lib/assets";
-import { AssetQr } from "../components/CodeTools";
+import { AssetQr, printAssetQrLabel } from "../components/CodeTools";
 
 /* Real DB enums — see database/migrations/tenant/..._create_organization_and_asset_tables.php */
 const STATUSES = ["OPERATIONAL", "UNDER_MAINTENANCE", "DOWN", "STANDBY", "OUT_OF_SERVICE"];
@@ -281,8 +281,8 @@ export default function Assets() {
               <div><div className="text-xs text-muted-foreground">Tgl Instalasi</div><div className="font-medium text-foreground">{view.installation_date || "-"}</div></div>
             </div>
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4 sm:flex-row sm:items-start">
-              <AssetQr value={`${window.location.origin}/assets?asset_id=${view.id}`} size={150} />
-              <div className="flex-1 text-center sm:text-left"><p className="text-sm font-semibold">QR Asset/Mesin</p><p className="mt-1 text-xs text-muted-foreground">Scan untuk membuka detail asset ini.</p><div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start"><Button onClick={() => navigate(`/work-orders?asset_id=${view.id}`)}>Buat Work Order</Button><Button variant="ghost" onClick={() => window.print()}>Print QR</Button></div></div>
+              <AssetQr value={`${window.location.origin}/assets/${view.id}`} size={150} />
+              <div className="flex-1 text-center sm:text-left"><p className="text-sm font-semibold">QR Asset/Mesin</p><p className="mt-1 text-xs text-muted-foreground">Scan untuk membuka detail asset ini.</p><div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start"><Button onClick={() => navigate(`/work-orders?asset_id=${view.id}`)}>Buat Work Order</Button><Button variant="ghost" onClick={async () => { try { await printAssetQrLabel({ value: `${window.location.origin}/assets/${view.id}`, title: view.name, code: view.code }); } catch (err) { toast.error(err.message || "Gagal membuat label QR."); } }}>Print QR 1:1</Button></div></div>
             </div>
             {view.description && (
               <div><div className="mb-1 text-xs text-muted-foreground">Deskripsi</div><p className="text-sm text-foreground">{view.description}</p></div>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Search, Play, Square, Check, Package, Camera, PenLine, MessageSquare,
@@ -22,6 +22,8 @@ const priorityDot = { CRITICAL: "bg-destructive", HIGH: "bg-[hsl(var(--warning))
 export default function TechWorkOrders() {
   const { user } = useApp();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [assetScannerOpen, setAssetScannerOpen] = useState(false);
   const [filter, setFilter] = useState("active");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState(location.state?.open || null);
@@ -52,6 +54,21 @@ export default function TechWorkOrders() {
     }
   }, []);
 
+  const handleAssetQr = (rawValue) => {
+    try {
+      const url = new URL(rawValue, window.location.origin);
+      // Current format: /assets/<id> (path). Also accept the legacy
+      // /assets?asset_id=<id> format from QR codes printed before this page existed.
+      const pathMatch = url.pathname.match(/\/assets\/([^/?#]+)/);
+      const assetId = pathMatch?.[1] || url.searchParams.get("asset_id");
+      if (!assetId) throw new Error("QR bukan QR Asset AITOMA.");
+      navigate(`/assets/${encodeURIComponent(assetId)}`);
+      toast.success("QR Asset berhasil dipindai.");
+    } catch (err) {
+      toast.error(err.message || "QR Asset tidak valid.");
+    }
+  };
+
   useEffect(() => {
     if (openId) loadDetail(openId);
     else setDetail(null);
@@ -59,7 +76,7 @@ export default function TechWorkOrders() {
 
   const rows = useMemo(() => {
     let r = workOrders;
-    if (filter === "active") r = r.filter((w) => ["IN_PROGRESS", "ASSIGNED"].includes(w.status));
+    if (filter === "active") r = r.filter((w) => ["SCHEDULED", "IN_PROGRESS", "ASSIGNED"].includes(w.status));
     if (filter === "new") r = r.filter((w) => ["OPEN", "PENDING_APPROVAL"].includes(w.status));
     if (filter === "hold") r = r.filter((w) => w.status === "ON_HOLD");
     if (filter === "done") r = r.filter((w) => ["COMPLETED", "CLOSED", "CANCELLED"].includes(w.status));
@@ -69,7 +86,13 @@ export default function TechWorkOrders() {
 
   return (
     <div className="space-y-4">
-      <h1 className="font-display text-xl font-extrabold text-foreground">Work Order Saya</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-xl font-extrabold text-foreground">Work Order Saya</h1>
+        <button onClick={() => setAssetScannerOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm active:scale-95">
+          <ScanLine className="h-4 w-4" /> Scan QR Asset
+        </button>
+      </div>
+      <ScannerSheet open={assetScannerOpen} onClose={() => setAssetScannerOpen(false)} onDetect={handleAssetQr} title="Scan QR Asset / Mesin" />
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input

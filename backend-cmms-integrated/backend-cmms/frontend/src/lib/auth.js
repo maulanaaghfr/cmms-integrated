@@ -15,6 +15,7 @@
 // `tenant_memberships_role_check` constraint and permission logic first —
 // this file is the only place the mapping needs to change afterwards.
 import { apiCentral, apiTenant, getToken, setToken, getActiveTenantDomain, setActiveTenantDomain } from "./api";
+import { getMyTenantUserOnDomain } from "./organization";
 
 export const BACKEND_TO_FRONTEND_ROLE = {
   COMPANY_ADMIN: "company_admin",
@@ -44,20 +45,32 @@ function mapMembership(m) {
  * `auth/me` returns the central `users.id`, while work-order assignments use
  * `tenant_users.id`.  Those IDs intentionally differ, so UI permission checks
  * must never compare an assignment to `apiUser.id`.
+ *
+ * FIX (2026-09-04): this used to call GET /users (paginated, scoped by
+ * TenantScope::tenantUsers()) and search the page for a row matching the
+ * signed-in user's central_user_id/email. That scope filters TECHNICIAN
+ * users by TEAM membership, not by primary_site_id — so a technician who
+ * had been correctly assigned work orders, but hadn't been added to any
+ * team yet, got an EMPTY list back and could never find themselves in it.
+ * The result: `tenantUserId` silently ended up `null` for that session,
+ * which broke every `work_order.current_assignee_id === user.tenantUserId`
+ * check across the technician UI (dashboard counts, "assigned to me"
+ * filters, action buttons on a work order's detail view) — even though
+ * the work order was assigned to them correctly in the database.
+ *
+ * Now this calls GET /users/me instead, a dedicated endpoint that always
+ * returns the caller's own tenant_user row directly (see
+ * OrganizationController::me() on the backend), with zero dependency on
+ * team/site scoping. This also makes it more reliable in general: the old
+ * approach could also silently fail to find a match once a tenant had more
+ * technicians than fit on a single page of results.
  */
 async function resolveTenantUserId(apiUser, membership) {
   if (!membership?.domain) return null;
 
   try {
-    const response = await apiTenant(membership.domain, "/users", {
-      params: { per_page: 100 },
-    });
-    const tenantUser = (response?.data || []).find(
-      (candidate) =>
-        candidate.central_user_id === apiUser.id ||
-        candidate.email?.toLowerCase() === apiUser.email?.toLowerCase()
-    );
-    return tenantUser?.id || null;
+    const response = await getMyTenantUserOnDomain(membership.domain);
+    return response?.data?.id || null;
   } catch {
     // A user can sign in even when the users feature is unavailable. Pages
     // should simply hide actions that require a tenant-local identity.
@@ -171,6 +184,24 @@ export async function apiLogout() {
 
 export function requestPasswordReset(email) {
   return apiCentral("/auth/forgot-password", { method: "POST", body: { email } });
+}
+
+/**
+ * Change the signed-in user's password. Used for the mandatory
+ * "change your temporary password" screen (see ChangePassword.jsx) as well
+ * as any future voluntary "change password" settings form — both hit the
+ * same PUT /auth/password endpoint, which also clears must_change_password
+ * server-side on success.
+ */
+export function apiChangePassword({ currentPassword, password, passwordConfirmation }) {
+  return apiCentral("/auth/password", {
+    method: "PUT",
+    body: {
+      current_password: currentPassword,
+      password,
+      password_confirmation: passwordConfirmation,
+    },
+  });
 }
 
 export function resetPasswordWithToken({ email, token, password, passwordConfirmation }) {

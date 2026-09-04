@@ -7,6 +7,7 @@ import AppLayout from "./components/AppLayout";
 import MobileShell from "./components/MobileShell";
 import { AppProvider, useApp } from "./store/store";
 import Login from "./pages/Login";
+import ChangePassword from "./pages/ChangePassword";
 import SystemGuide from "./pages/SystemGuide";
 import Dashboard from "./pages/Dashboard";
 import TechHome from "./pages/mobile/TechHome";
@@ -25,6 +26,7 @@ import Users from "./pages/Users";
 import Locations from "./pages/Locations";
 import Manufacturers from "./pages/Manufacturers";
 import Assets from "./pages/Assets";
+import AssetDetail from "./pages/AssetDetail";
 import WorkOrders from "./pages/WorkOrders";
 import Requests from "./pages/Requests";
 import Preventive from "./pages/Preventive";
@@ -60,6 +62,7 @@ function MobileAppShell() {
         <Route path="/dashboard" element={isTech ? <TechHome /> : <OperatorHome />} />
         {isTech && <Route path="/work-orders" element={<TechWorkOrders />} />}
         {isTech && <Route path="/assets" element={<Assets />} />}
+        {isTech && <Route path="/assets/:assetId" element={<AssetDetail />} />}
         {!isTech && <Route path="/requests" element={<OperatorRequests />} />}
         <Route path="/notifications" element={<MobileNotifications />} />
         <Route path="/profile" element={<MobileProfile />} />
@@ -81,6 +84,12 @@ function Shell() {
     );
   }
   if (!user) return <Login />;
+  // FIX (2026-09-04): must come before the mobile/desktop branch below —
+  // the backend refuses every tenant API call (work orders, users,
+  // notifications...) with 403 PASSWORD_CHANGE_REQUIRED while this is
+  // true, for any role. Previously nothing checked this flag, so the user
+  // would land on a normal-looking but permanently empty dashboard.
+  if (user.mustChangePassword) return <ChangePassword />;
   if (user.role === "technician" || user.role === "operator") return <MobileAppShell />;
   return (
     <AppLayout>
@@ -104,6 +113,7 @@ function Shell() {
         <Route path="/locations" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Locations /></Guard>} />
         <Route path="/manufacturers" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Manufacturers /></Guard>} />
         <Route path="/assets" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Assets /></Guard>} />
+        <Route path="/assets/:assetId" element={<Guard roles={["company_admin", "manager", "supervisor"]}><AssetDetail /></Guard>} />
         <Route path="/work-orders" element={<Guard roles={["company_admin", "manager", "supervisor"]}><WorkOrders /></Guard>} />
         <Route path="/requests" element={<Guard roles={["operator", "company_admin", "manager", "supervisor"]}><Requests /></Guard>} />
         <Route path="/procurement" element={<Guard roles={["company_admin", "manager", "supervisor"]}><Procurement /></Guard>} />

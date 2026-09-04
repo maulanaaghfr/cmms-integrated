@@ -11,6 +11,7 @@ use App\Support\ApiData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Validation\Rules\Password;
 
@@ -23,10 +24,32 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
         ]);
-        $user = User::query()->where('email', mb_strtolower($data['email']))->first();
-        if (! $user || ! $user->password_hash || ! Hash::check($data['password'], $user->password_hash)) {
+
+        // FIX: trim() ditambahkan — sebelumnya hanya mb_strtolower(), sehingga
+        // email dengan spasi tersembunyi (umum dari autofill/paste link undangan
+        // di mobile) gagal match dan menghasilkan 401 "kadang-kadang".
+        $email = mb_strtolower(trim($data['email']));
+
+        $user = User::query()->where('email', $email)->first();
+
+        if (! $user) {
+            Log::warning('auth.login.failed', ['reason' => 'no_user', 'email_hash' => hash('sha256', $email)]);
             throw new ApiException('INVALID_CREDENTIALS', 'Email or password is incorrect.', 401);
         }
+
+        if (! $user->password_hash) {
+            // Akun ada tapi belum pernah set password (invite belum diselesaikan).
+            // Tetap balas INVALID_CREDENTIALS ke client (jangan bocorkan status akun
+            // ke pihak yang belum terautentikasi), tapi log detail untuk diagnosis internal.
+            Log::warning('auth.login.failed', ['reason' => 'no_password_hash', 'user_id' => $user->id]);
+            throw new ApiException('INVALID_CREDENTIALS', 'Email or password is incorrect.', 401);
+        }
+
+        if (! Hash::check($data['password'], $user->password_hash)) {
+            Log::warning('auth.login.failed', ['reason' => 'bad_password', 'user_id' => $user->id]);
+            throw new ApiException('INVALID_CREDENTIALS', 'Email or password is incorrect.', 401);
+        }
+
         if (! in_array($user->status, ['INVITED', 'ACTIVE'], true)) {
             throw new ApiException('USER_INACTIVE', 'This account cannot sign in.', 403);
         }
@@ -48,8 +71,23 @@ class AuthController extends Controller
 
     public function me(Request $request): mixed
     {
+        // FIX: tambahkan blok 'tenant_user' bila middleware tenant (mis. EnsureTenantAccess)
+        // sudah men-set $request->attributes->set('tenant_user', ...) — atribut yang sama
+        // yang dipakai EnsureTenantRole ($request->attributes->get('tenant_user')?->role_key),
+        // jadi ini konsisten dengan kontrak yang sudah ada, bukan kontrak baru.
+        // Tujuannya: frontend bisa ambil tenantUserId langsung dari /auth/me tanpa perlu
+        // panggil GET /users (yang biasanya dibatasi role Manager/Admin dan menyebabkan
+        // Technician gagal resolve id-nya sendiri).
+        $tenantUser = $request->attributes->get('tenant_user');
+
         return ApiData::item([
             'user' => $this->userPayload($request->user()),
+            'tenant_user' => $tenantUser ? [
+                'id' => $tenantUser->id,
+                'role_key' => $tenantUser->role_key,
+                'primary_site_id' => $tenantUser->primary_site_id ?? null,
+                'status' => $tenantUser->status ?? null,
+            ] : null,
             'memberships' => DB::connection(config('tenancy.database.central_connection'))
                 ->table('tenant_memberships')
                 ->join('tenants', 'tenants.id', '=', 'tenant_memberships.tenant_id')
@@ -93,8 +131,6 @@ class AuthController extends Controller
         $email = mb_strtolower(trim($data['email']));
         $user = User::query()->where('email', $email)->whereIn('status', ['INVITED', 'ACTIVE'])->first();
 
-        // Always return the same accepted response: this endpoint must not
-        // reveal whether an email address belongs to an eligible account.
         if (! $user) {
             return ApiData::item(['message' => 'If an active account exists for this email, a password reset link has been sent.'], 202);
         }

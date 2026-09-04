@@ -137,6 +137,32 @@ class OrganizationController extends Controller
         return ApiData::paginated($query->paginate($request->integer('per_page', 20)));
     }
 
+    /**
+     * Return the caller's own tenant_user record.
+     *
+     * FIX (2026-09-04): This intentionally does NOT go through
+     * TenantScope::tenantUsers(). For role TECHNICIAN, that scope filters
+     * users by team membership (team_members -> teams.site_id), not by
+     * primary_site_id. A technician who has been assigned work orders but
+     * has not yet been added to any team gets an EMPTY result from
+     * GET /users — meaning they can't even find their own record in the
+     * list the frontend uses to resolve "who am I" (tenantUserId).
+     *
+     * That, in turn, silently breaks every `current_assignee_id ===
+     * user.tenantUserId` check across the technician UI (dashboard counts,
+     * "assigned to me" filters, action buttons on a work order) even
+     * though the work order is correctly assigned to them in the database.
+     *
+     * A user must always be able to resolve their own identity regardless
+     * of team/site scoping, so this reads directly from the already
+     * middleware-resolved `tenant_user` on the request instead of
+     * re-querying through the scoped list.
+     */
+    public function me(Request $request): mixed
+    {
+        return ApiData::item($request->attributes->get('tenant_user'));
+    }
+
     public function user(Request $request, string $user): mixed
     {
         return ApiData::item($this->scope->tenantUser($request->attributes->get('tenant_user'), $user));

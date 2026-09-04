@@ -456,14 +456,55 @@ class WorkOrderController extends Controller
         return $row;
     }
 
+    /**
+     * FIX: sebelumnya satu exists() query menggabungkan 3 syarat (site, role,
+     * status) di balik SATU kode error generik TECHNICIAN_SITE_MISMATCH,
+     * sehingga tidak mungkin tahu dari response API syarat mana yang gagal
+     * saat Manager mencoba assign seorang Technician.
+     *
+     * Sekarang setiap syarat dicek terpisah dengan kode error sendiri. Aturan
+     * keamanan/otorisasi TIDAK berubah — hanya diagnosability-nya.
+     *
+     * CATATAN PENTING: cek "technician->primary_site_id === asset->site_id"
+     * di bawah TIDAK konsisten dengan TenantScope::sites()/assets() untuk
+     * role TECHNICIAN, yang menentukan akses site lewat TEAM MEMBERSHIP
+     * (team_members -> teams.site_id), bukan primary_site_id. Kalau
+     * Technician Anda tidak mengisi primary_site_id (karena aksesnya via
+     * tim), assign() akan SELALU gagal walau dari sisi TenantScope dia
+     * berhak. Lihat SQL diagnostik di jawaban chat untuk memastikan mana
+     * yang terjadi pada kasus LIONEL MESSI 10 — perbaikan permanennya
+     * (isi primary_site_id vs ganti jadi cek berbasis team) perlu
+     * keputusan Anda karena ini menyangkut model data, bukan sekadar bug.
+     */
     private function validateAssignment(object $asset, ?string $teamId, ?string $assigneeId): void
     {
-        if ($teamId && ! DB::table('teams')->where('id', $teamId)->where('site_id', $asset->site_id)->where('is_active', true)->exists()) {
-            throw new ApiException('TEAM_SITE_MISMATCH', 'Assigned team must be active at the asset site.', 422);
+        if ($teamId) {
+            $team = DB::table('teams')->where('id', $teamId)->first();
+            if (! $team) {
+                throw new ApiException('TEAM_NOT_FOUND', 'Selected team does not exist.', 422);
+            }
+            if (! $team->is_active) {
+                throw new ApiException('TEAM_INACTIVE', 'Selected team is not active.', 422);
+            }
+            if ($team->site_id !== $asset->site_id) {
+                throw new ApiException('TEAM_SITE_MISMATCH', 'Assigned team must be active at the asset site.', 422);
+            }
         }
-        if ($assigneeId && ! DB::table('tenant_users')->where('id', $assigneeId)->where('primary_site_id', $asset->site_id)
-            ->where('role_key', 'TECHNICIAN')->where('status', 'ACTIVE')->exists()) {
-            throw new ApiException('TECHNICIAN_SITE_MISMATCH', 'Assignee must be an active technician at the asset site.', 422);
+
+        if ($assigneeId) {
+            $technician = DB::table('tenant_users')->where('id', $assigneeId)->first();
+            if (! $technician) {
+                throw new ApiException('TECHNICIAN_NOT_FOUND', 'Selected technician does not exist.', 422);
+            }
+            if ($technician->role_key !== 'TECHNICIAN') {
+                throw new ApiException('TECHNICIAN_ROLE_INVALID', "Selected user's role is {$technician->role_key}, not TECHNICIAN.", 422);
+            }
+            if ($technician->status !== 'ACTIVE') {
+                throw new ApiException('TECHNICIAN_NOT_ACTIVE', "Selected technician status is {$technician->status}, must be ACTIVE before assignment.", 422);
+            }
+            if ($technician->primary_site_id !== $asset->site_id) {
+                throw new ApiException('TECHNICIAN_SITE_MISMATCH', 'Assignee must be an active technician at the asset site (primary_site_id mismatch).', 422);
+            }
         }
     }
 

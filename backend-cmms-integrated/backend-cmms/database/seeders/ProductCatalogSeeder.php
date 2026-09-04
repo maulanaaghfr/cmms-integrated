@@ -38,7 +38,17 @@ class ProductCatalogSeeder extends Seeder
             'PROFESSIONAL' => ['Professional', 1500000, 50, 1000, 5, true],
             'ENTERPRISE' => ['Enterprise', 5000000, null, null, null, true],
         ] as $key => [$name, $monthlyPrice, $maxUsers, $maxAssets, $maxSites, $hasPm]) {
-            $planId = $this->upsert('plans', ['key' => $key, 'version_number' => 1], [
+            // FIX: sebelumnya di-upsert dengan key ['key' => $key, 'version_number' => 1]
+            // yang HARDCODE version 1. Jika plan pernah di-republish (version_number naik),
+            // baris ini akan membuat plan BARU yang terpisah dari plan yang benar-benar
+            // dipakai oleh subscriptions.plan_id tenant, sehingga plan_features yang
+            // di-attach di bawah tidak pernah "terlihat" oleh EnsurePlanFeature untuk
+            // tenant yang sudah berlangganan versi lama/baru yang berbeda.
+            //
+            // Sekarang: cari plan TERBARU (version_number tertinggi) untuk key ini.
+            // Kalau ada, update baris itu (bukan bikin baru). Kalau belum ada sama
+            // sekali, baru buat version 1.
+            $planId = $this->upsertPlanLatestVersion($key, [
                 'name' => $name,
                 'description' => 'Paket '.$name.' — dapat diubah oleh SUPER_ADMIN kapan saja.',
                 'monthly_price' => $monthlyPrice,
@@ -51,7 +61,6 @@ class ProductCatalogSeeder extends Seeder
                 'is_public' => true,
                 'effective_from' => now(),
                 'published_at' => now(),
-                'lock_version' => 1,
             ]);
 
             foreach (['core.assets', 'core.requests', 'core.work_orders', 'core.teams', 'core.notifications', 'core.inventory'] as $featureKey) {
@@ -62,6 +71,58 @@ class ProductCatalogSeeder extends Seeder
             $this->attachFeature($planId, $featureIds['limit.users'], true, $maxUsers);
             $this->attachFeature($planId, $featureIds['limit.assets'], true, $maxAssets);
             $this->attachFeature($planId, $featureIds['limit.sites'], true, $maxSites);
+        }
+
+        $this->warnOnOrphanPlanVersions();
+    }
+
+    /**
+     * Update plan versi terbaru untuk $key jika sudah ada; buat version 1 hanya
+     * jika key ini belum punya baris plan sama sekali. Tidak pernah membuat
+     * baris "bayangan" baru selama masih ada baris existing untuk key tsb.
+     */
+    private function upsertPlanLatestVersion(string $key, array $values): string
+    {
+        $existing = DB::table('plans')->where('key', $key)->orderByDesc('version_number')->first();
+
+        if ($existing) {
+            DB::table('plans')->where('id', $existing->id)->update([
+                ...$values,
+                'updated_at' => now(),
+            ]);
+
+            return $existing->id;
+        }
+
+        $id = (string) Str::ulid();
+        DB::table('plans')->insert([
+            'id' => $id,
+            'key' => $key,
+            'version_number' => 1,
+            'lock_version' => 1,
+            ...$values,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    /**
+     * Peringatan diagnostik saja (tidak mengubah data): kalau ada key plan dengan
+     * lebih dari satu baris version_number, itu tanda peninggalan bug lama —
+     * perlu ditinjau manual mana yang benar-benar dipakai subscriptions.plan_id.
+     */
+    private function warnOnOrphanPlanVersions(): void
+    {
+        $dupes = DB::table('plans')
+            ->select('key')
+            ->groupBy('key')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('key');
+
+        foreach ($dupes as $key) {
+            $this->command?->warn("[ProductCatalogSeeder] Plan key '{$key}' punya lebih dari satu baris version_number — periksa manual mana yang dipakai subscriptions.plan_id agar plan_features tidak basi.");
         }
     }
 
