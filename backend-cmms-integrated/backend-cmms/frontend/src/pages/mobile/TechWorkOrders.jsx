@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Search, Play, Square, Check, Package, Camera, PenLine, MessageSquare,
-  ChevronRight, ListChecks, Clock, ScanLine, X,
+  ChevronRight, ListChecks, Clock, ScanLine, X, CheckCircle2,
 } from "lucide-react";
 import { useApp } from "../../store/store";
 import { Sheet, ScannerSheet, SignaturePad, GpsButton, PhotoCapture, SlaBadge } from "../../components/mobile-kit";
@@ -12,12 +12,27 @@ import { addComment, uploadAttachment } from "../../lib/requests";
 import { listWarehouses } from "../../lib/inventory";
 
 const FILTERS = [
-  { key: "active", label: "Aktif" },
-  { key: "new", label: "Baru" },
-  { key: "hold", label: "On Hold" },
-  { key: "done", label: "Selesai" },
+  { key: "active", label: "Aktif", statuses: ["SCHEDULED", "IN_PROGRESS", "ASSIGNED"] },
+  { key: "new", label: "Baru", statuses: ["OPEN", "PENDING_APPROVAL"] },
+  { key: "hold", label: "On Hold", statuses: ["ON_HOLD"] },
+  { key: "done", label: "Selesai", statuses: ["COMPLETED", "CLOSED", "CANCELLED"] },
 ];
 const priorityDot = { CRITICAL: "bg-destructive", HIGH: "bg-[hsl(var(--warning))]", MEDIUM: "bg-accent", LOW: "bg-muted-foreground" };
+
+// The flow a technician actually walks through, used to render a small
+// progress stepper at the top of the detail sheet so it's obvious at a
+// glance where a WO currently sits and what's next.
+const FLOW_STEPS = [
+  { key: "ASSIGNED", label: "Ditugaskan" },
+  { key: "IN_PROGRESS", label: "Dikerjakan" },
+  { key: "COMPLETED", label: "Selesai" },
+  { key: "CLOSED", label: "Ditutup" },
+];
+function flowIndex(status) {
+  if (status === "ON_HOLD") return 1; // still "in progress" territory
+  const i = FLOW_STEPS.findIndex((s) => s.key === status);
+  return i === -1 ? 0 : i;
+}
 
 export default function TechWorkOrders() {
   const { user } = useApp();
@@ -74,14 +89,27 @@ export default function TechWorkOrders() {
     else setDetail(null);
   }, [openId, loadDetail]);
 
+  const counted = useMemo(() => {
+    const counts = {};
+    for (const f of FILTERS) counts[f.key] = workOrders.filter((w) => f.statuses.includes(w.status)).length;
+    return counts;
+  }, [workOrders]);
+
   const rows = useMemo(() => {
-    let r = workOrders;
-    if (filter === "active") r = r.filter((w) => ["SCHEDULED", "IN_PROGRESS", "ASSIGNED"].includes(w.status));
-    if (filter === "new") r = r.filter((w) => ["OPEN", "PENDING_APPROVAL"].includes(w.status));
-    if (filter === "hold") r = r.filter((w) => w.status === "ON_HOLD");
-    if (filter === "done") r = r.filter((w) => ["COMPLETED", "CLOSED", "CANCELLED"].includes(w.status));
-    if (q.trim()) r = r.filter((w) => (w.title || "").toLowerCase().includes(q.toLowerCase()) || (w.work_order_number || "").toLowerCase().includes(q.toLowerCase()));
-    return r;
+    const active = FILTERS.find((f) => f.key === filter);
+    let r = active ? workOrders.filter((w) => active.statuses.includes(w.status)) : workOrders;
+    if (q.trim()) {
+      const needle = q.toLowerCase();
+      r = r.filter((w) => (w.title || "").toLowerCase().includes(needle) || (w.work_order_number || "").toLowerCase().includes(needle));
+    }
+    // Sort by urgency: CRITICAL/HIGH first, then earliest due date.
+    const weight = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    return [...r].sort((a, b) => {
+      const p = (weight[a.priority] ?? 4) - (weight[b.priority] ?? 4);
+      if (p !== 0) return p;
+      if (a.due_at && b.due_at) return new Date(a.due_at) - new Date(b.due_at);
+      return 0;
+    });
   }, [workOrders, filter, q]);
 
   return (
@@ -103,24 +131,27 @@ export default function TechWorkOrders() {
       <div className="flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
           <button key={f.key} onClick={() => setFilter(f.key)}
-            className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${filter === f.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${filter === f.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
             {f.label}
+            {counted[f.key] > 0 && (
+              <span className={`rounded-full px-1.5 text-[10px] ${filter === f.key ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{counted[f.key]}</span>
+            )}
           </button>
         ))}
       </div>
 
       <div className="space-y-2.5">
-        {loading && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Memuat...</div>}
+        {loading && [0, 1, 2].map((i) => <div key={i} className="h-[72px] animate-pulse rounded-2xl border border-border bg-muted/50" />)}
         {!loading && rows.length === 0 && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Tidak ada work order pada filter ini.</div>}
         {rows.map((w) => (
           <button key={w.id} onClick={() => setOpenId(w.id)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card active:scale-[0.99]">
             <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[w.priority] || "bg-muted-foreground"}`} />
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-foreground">{w.title}</div>
-              <div className="text-xs text-muted-foreground">{w.work_order_number} · {w.status}</div>
+            <div className="flex-1 min-w-0">
+              <div className="truncate text-sm font-semibold text-foreground">{w.title}</div>
+              <div className="text-xs text-muted-foreground">{w.work_order_number} · {STATUS_LABEL[w.status] || w.status}</div>
             </div>
             <SlaBadge w={w} />
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </button>
         ))}
       </div>
@@ -137,6 +168,38 @@ export default function TechWorkOrders() {
   );
 }
 
+const STATUS_LABEL = {
+  OPEN: "Baru", PENDING_APPROVAL: "Menunggu Persetujuan", SCHEDULED: "Dijadwalkan", ASSIGNED: "Ditugaskan",
+  IN_PROGRESS: "Dikerjakan", ON_HOLD: "Ditahan", COMPLETED: "Selesai", CLOSED: "Ditutup", CANCELLED: "Dibatalkan",
+};
+
+function FlowStepper({ status }) {
+  if (status === "CANCELLED") {
+    return <div className="mb-3 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-center text-xs font-semibold text-destructive">Work order ini dibatalkan.</div>;
+  }
+  const idx = flowIndex(status);
+  return (
+    <div className="mb-4 flex items-center">
+      {FLOW_STEPS.map((s, i) => (
+        <React.Fragment key={s.key}>
+          <div className="flex flex-col items-center gap-1">
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition ${
+              i < idx ? "bg-primary text-primary-foreground" : i === idx ? "bg-primary/15 text-primary ring-2 ring-primary/40" : "bg-muted text-muted-foreground"
+            }`}>
+              {i < idx ? <Check className="h-3 w-3" /> : i + 1}
+            </div>
+            <span className={`text-[9px] font-semibold ${i <= idx ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
+          </div>
+          {i < FLOW_STEPS.length - 1 && <div className={`mx-1 h-0.5 flex-1 rounded-full ${i < idx ? "bg-primary" : "bg-muted"}`} />}
+        </React.Fragment>
+      ))}
+      {status === "ON_HOLD" && (
+        <span className="ml-2 shrink-0 rounded-full bg-[hsl(var(--warning))]/10 px-2 py-0.5 text-[10px] font-bold text-[hsl(var(--warning))]">Ditahan</span>
+      )}
+    </div>
+  );
+}
+
 function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
   const [tab, setTab] = useState("overview");
   const [note, setNote] = useState("");
@@ -148,6 +211,8 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
   const [warehouses, setWarehouses] = useState([]);
   const [photos, setPhotos] = useState({ BEFORE: [], DURING: [], AFTER: [] });
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [completionNote, setCompletionNote] = useState("");
 
   const act = async (action, body = {}) => {
     setSaving(true);
@@ -159,6 +224,21 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
       onRefresh();
     } catch (err) {
       toast.error(err.message || "Aksi gagal.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitCompletion = async () => {
+    setSaving(true);
+    try {
+      await workOrderAction(d.id, "complete", { completion_note: completionNote.trim() || null });
+      toast.success("Work order diselesaikan.");
+      setCompleteOpen(false);
+      setCompletionNote("");
+      onRefresh();
+    } catch (err) {
+      toast.error(err.message || "Gagal menyelesaikan work order.");
     } finally {
       setSaving(false);
     }
@@ -181,7 +261,7 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
 
   const TABS = [
     { k: "overview", label: "Info", icon: ListChecks },
-    { k: "checklist", label: "Checklist", icon: Check },
+    { k: "checklist", label: "Checklist", icon: Check, badge: (d.checklist || []).filter((c) => !c.is_completed).length },
     { k: "evidence", label: "Bukti Foto", icon: Camera },
     { k: "time", label: "Timer", icon: Clock },
     { k: "notes", label: "Catatan", icon: MessageSquare },
@@ -251,13 +331,18 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
     }
   };
 
+  const pendingChecklist = (d.checklist || []).filter((c) => !c.is_completed).length;
+
   return (
     <Sheet open onClose={onClose} title={`${d.work_order_number || d.id} — ${d.title}`}>
+      <FlowStepper status={d.status} />
+
       <div className="-mx-1 mb-3 flex gap-1 overflow-x-auto border-b border-border pb-2">
         {TABS.map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${tab === t.k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
             <t.icon className="h-3.5 w-3.5" /> {t.label}
+            {!!t.badge && <span className={`rounded-full px-1.5 text-[10px] ${tab === t.k ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -266,12 +351,20 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
         <div className="space-y-3">
           <Row label="Nomor" value={d.work_order_number} />
           <Row label="Prioritas" value={d.priority} />
-          <Row label="Status" value={d.status} />
+          <Row label="Status" value={STATUS_LABEL[d.status] || d.status} />
           <Row label="Batas Waktu" value={d.due_at ? new Date(d.due_at).toLocaleDateString("id-ID") : "-"} />
           <Row label="Deskripsi" value={d.description || "-"} />
+          {d.completion_note && <Row label="Catatan Penyelesaian" value={d.completion_note} />}
           <div className="pt-2">
             <GpsButton targetCoords={null} label="Bagikan Lokasi Saya" />
           </div>
+
+          {isAssignee && d.status === "IN_PROGRESS" && pendingChecklist > 0 && (
+            <div className="rounded-xl border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/5 px-3 py-2 text-xs text-[hsl(var(--warning))]">
+              {pendingChecklist} item checklist belum selesai — cek tab Checklist sebelum menyelesaikan WO.
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 pt-2">
             {d.status === "ASSIGNED" && isAssignee && (
               <button onClick={() => act("acknowledge")} disabled={saving}
@@ -286,12 +379,29 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
               </button>
             )}
             {d.status === "IN_PROGRESS" && isAssignee && (
-              <button onClick={() => { const note = window.prompt("Catatan penyelesaian"); if (note !== null) act("complete", { completion_note: note }); }} disabled={saving}
+              <button onClick={() => { setCompletionNote(""); setCompleteOpen(true); }} disabled={saving}
                 className="flex items-center gap-1.5 rounded-xl bg-[hsl(var(--success))] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">
-                <Check className="h-3.5 w-3.5" /> Selesaikan
+                <CheckCircle2 className="h-3.5 w-3.5" /> Selesaikan
               </button>
             )}
           </div>
+
+          {completeOpen && (
+            <div className="rounded-2xl border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 p-3 space-y-2.5">
+              <p className="text-xs font-bold text-foreground">Catatan penyelesaian (opsional)</p>
+              <textarea
+                value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} rows={3}
+                placeholder="Contoh: penggantian bearing selesai, mesin sudah diuji jalan normal."
+                className="w-full resize-none rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setCompleteOpen(false)} disabled={saving} className="flex-1 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground disabled:opacity-60">Batal</button>
+                <button onClick={submitCompletion} disabled={saving} className="flex-1 rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                  {saving ? "Menyimpan..." : "Konfirmasi Selesai"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -329,9 +439,9 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
         <div className="space-y-4">
           <div className="rounded-2xl border border-border p-4 text-center">
             <div className="text-xs text-muted-foreground">Status Timer</div>
-            <div className="font-display text-lg font-extrabold text-foreground mt-1">{d.status}</div>
+            <div className="font-display text-lg font-extrabold text-foreground mt-1">{STATUS_LABEL[d.status] || d.status}</div>
             <div className="mt-3 flex justify-center gap-2">
-              {d.status === "IN_PROGRESS" && (
+              {d.status === "IN_PROGRESS" && isAssignee && (
                 <>
                   <button onClick={() => act("timer/start")} disabled={saving}
                     className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
@@ -346,9 +456,12 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
             </div>
           </div>
           <div className="space-y-1.5">
-            {(d.time_logs || []).map((l, i) => (
+            {(d.labor_entries || []).length === 0 && (
+              <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Belum ada catatan waktu kerja.</p>
+            )}
+            {(d.labor_entries || []).map((l, i) => (
               <div key={i} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs">
-                <span>{new Date(l.started_at).toLocaleTimeString("id-ID")} → {l.stopped_at ? new Date(l.stopped_at).toLocaleTimeString("id-ID") : "berjalan"}</span>
+                <span>{new Date(l.started_at).toLocaleTimeString("id-ID")} → {l.ended_at ? new Date(l.ended_at).toLocaleTimeString("id-ID") : "berjalan"}</span>
                 <span className="font-mono text-muted-foreground">{l.duration_minutes ? `${l.duration_minutes}m` : "—"}</span>
               </div>
             ))}
@@ -361,22 +474,26 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
           <div className="flex gap-2">
             <input
               value={note} onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !saving) sendNote(); }}
               placeholder="Catatan lapangan..."
               className="flex-1 rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-            <button onClick={sendNote} disabled={saving} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">Kirim</button>
+            <button onClick={sendNote} disabled={saving || !note.trim()} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">Kirim</button>
           </div>
           <div className="space-y-2">
             {(d.comments || []).length === 0 && <p className="text-xs text-muted-foreground">Belum ada catatan.</p>}
-            {(d.comments || []).map((c, i) => (
-              <div key={i} className="rounded-xl border border-border p-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">{c.author_name || c.created_by}</span>
-                  <span>{new Date(c.created_at).toLocaleTimeString("id-ID")}</span>
+            {(d.comments || []).map((c, i) => {
+              const isMe = c.author_id === user?.tenantUserId;
+              return (
+                <div key={i} className={`rounded-xl border p-3 ${isMe ? "border-primary/20 bg-primary/[0.03]" : "border-border"}`}>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">{isMe ? "Anda" : c.author_name || "Teknisi"}</span>
+                    <span>{new Date(c.created_at).toLocaleTimeString("id-ID")}</span>
+                  </div>
+                  <p className="mt-1 text-sm">{c.body}</p>
                 </div>
-                <p className="mt-1 text-sm">{c.body}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -427,9 +544,9 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
 
 function Row({ label, value }) {
   return (
-    <div className="flex items-center justify-between border-b border-border/60 py-1.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 text-sm">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="text-right font-medium text-foreground">{value}</span>
     </div>
   );
 }
