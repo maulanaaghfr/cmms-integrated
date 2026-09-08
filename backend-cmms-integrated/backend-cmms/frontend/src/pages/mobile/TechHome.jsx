@@ -73,15 +73,15 @@ export default function TechHome() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-6xl space-y-5 lg:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">{greeting()},</p>
-          <h1 className="font-display text-2xl font-extrabold text-foreground">{(user?.name || "").split(" ")[0]} 👋</h1>
+          <h1 className="font-display text-2xl font-extrabold text-foreground sm:text-3xl">{(user?.name || "").split(" ")[0]} 👋</h1>
         </div>
         <button
           onClick={() => setScannerOpen(true)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm active:scale-95"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition hover:brightness-105 active:scale-95"
           title="Scan QR Asset"
         >
           <ScanLine className="h-5 w-5" />
@@ -95,49 +95,53 @@ export default function TechHome() {
         <StatTile icon={CheckCircle2} value={completedCount} label="Selesai" tone="success" />
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-4 soft-card">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Beban kerja hari ini</span>
-          <span className={`font-semibold ${workloadTone}`}>{loadPct}%</span>
-        </div>
-        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-          <div className={`h-full rounded-full transition-all ${loadPct >= 100 ? "bg-destructive" : loadPct >= 60 ? "bg-[hsl(var(--warning))]" : "bg-primary"}`} style={{ width: `${loadPct}%` }} />
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {loadPct >= 100 ? "Beban penuh — selesaikan WO berjalan sebelum menerima yang baru." : `${active.length} dari kapasitas ideal 5 WO aktif.`}
-        </p>
-      </div>
-
-      {!loading && urgent.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5">
-            <Flame className="h-4 w-4 text-destructive" />
-            <h2 className="font-display text-sm font-bold text-foreground">Perlu Perhatian</h2>
-          </div>
-          <div className="space-y-2.5">
-            {urgent.slice(0, 4).map((w) => <WorkOrderCard key={w.id} w={w} highlight />)}
-          </div>
-        </div>
-      )}
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-display text-sm font-bold text-foreground">Work Order Ditugaskan</h2>
-          <Link to="/work-orders" className="flex items-center gap-1 text-xs font-semibold text-primary">Lihat semua <ArrowRight className="h-3 w-3" /></Link>
-        </div>
-        <div className="space-y-2.5">
-          {loading && (
-            <div className="space-y-2.5">
-              {[0, 1, 2].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-muted/50" />)}
+      <div className="grid gap-5 lg:grid-cols-[1fr_300px] lg:items-start lg:gap-6">
+        {/* main column: work order lists */}
+        <div className="space-y-5">
+          {!loading && urgent.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-1.5">
+                <Flame className="h-4 w-4 text-destructive" />
+                <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Perlu Perhatian</h2>
+              </div>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {urgent.slice(0, 4).map((w) => <WorkOrderCard key={w.id} w={w} highlight />)}
+              </div>
             </div>
           )}
-          {!loading && active.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Tidak ada work order aktif. 🎉</div>
-          )}
-          {!loading && others.slice(0, 5).map((w) => <WorkOrderCard key={w.id} w={w} />)}
-          {!loading && urgent.length > 0 && others.length === 0 && (
-            <p className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground">Semua WO aktifmu sudah tampil di atas.</p>
-          )}
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Work Order Ditugaskan</h2>
+              <Link to="/work-orders" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Lihat semua <ArrowRight className="h-3 w-3" /></Link>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {loading && (
+                [0, 1, 2].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-muted/50" />)
+              )}
+              {!loading && active.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground sm:col-span-2">Tidak ada work order aktif. 🎉</div>
+              )}
+              {!loading && others.slice(0, 5).map((w) => <WorkOrderCard key={w.id} w={w} />)}
+              {!loading && urgent.length > 0 && others.length === 0 && (
+                <p className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground sm:col-span-2">Semua WO aktifmu sudah tampil di atas.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* sidebar: workload gauge */}
+        <div className="rounded-2xl border border-border bg-card p-4 soft-card lg:sticky lg:top-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Beban kerja hari ini</span>
+            <span className={`font-semibold ${workloadTone}`}>{loadPct}%</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+            <div className={`h-full rounded-full transition-all ${loadPct >= 100 ? "bg-destructive" : loadPct >= 60 ? "bg-[hsl(var(--warning))]" : "bg-primary"}`} style={{ width: `${loadPct}%` }} />
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {loadPct >= 100 ? "Beban penuh — selesaikan WO berjalan sebelum menerima yang baru." : `${active.length} dari kapasitas ideal 5 WO aktif.`}
+          </p>
         </div>
       </div>
     </div>
@@ -149,7 +153,7 @@ function WorkOrderCard({ w, highlight }) {
     <Link
       to="/work-orders"
       state={{ open: w.id }}
-      className={`block rounded-2xl border p-4 soft-card active:scale-[0.99] ${highlight ? "border-destructive/30 bg-destructive/[0.03]" : "border-border bg-card"}`}
+      className={`block rounded-2xl border p-4 soft-card transition hover:shadow-md active:scale-[0.99] ${highlight ? "border-destructive/30 bg-destructive/[0.03] hover:border-destructive/50" : "border-border bg-card hover:border-primary/20"}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2">
@@ -175,9 +179,9 @@ function WorkOrderCard({ w, highlight }) {
 function StatTile({ icon: Icon, value, label, tone }) {
   const tones = { primary: "bg-primary/10 text-primary", warning: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]", success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" };
   return (
-    <div className="rounded-2xl border border-border bg-card p-3 text-center soft-card">
-      <div className={`mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl ${tones[tone]}`}><Icon className="h-4 w-4" /></div>
-      <div className="font-display text-lg font-extrabold text-foreground">{value}</div>
+    <div className="rounded-2xl border border-border bg-card p-3 text-center soft-card lg:p-4">
+      <div className={`mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl ${tones[tone]} lg:h-9 lg:w-9`}><Icon className="h-4 w-4" /></div>
+      <div className="font-display text-lg font-extrabold text-foreground lg:text-xl">{value}</div>
       <div className="text-[11px] text-muted-foreground">{label}</div>
     </div>
   );

@@ -75,11 +75,11 @@ export default function MobileNotifications() {
   }, [filtered]);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4 lg:space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-extrabold text-foreground">Notifikasi</h1>
+        <h1 className="font-display text-xl font-extrabold text-foreground sm:text-2xl">Notifikasi</h1>
         {unread > 0 && (
-          <button onClick={handleMarkAllRead} className="text-xs font-semibold text-primary">
+          <button onClick={handleMarkAllRead} className="text-xs font-semibold text-primary transition hover:underline sm:text-sm">
             Tandai semua dibaca
           </button>
         )}
@@ -88,13 +88,13 @@ export default function MobileNotifications() {
       <div className="flex gap-2">
         <button
           onClick={() => setTab("all")}
-          className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+          className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
         >
           Semua
         </button>
         <button
           onClick={() => setTab("unread")}
-          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${tab === "unread" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${tab === "unread" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
         >
           Belum dibaca
           {unread > 0 && <span className={`rounded-full px-1.5 text-[10px] ${tab === "unread" ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{unread}</span>}
@@ -109,8 +109,8 @@ export default function MobileNotifications() {
         )}
 
         {!loading && filtered.length === 0 && (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border p-10 text-center">
-            <Inbox className="h-7 w-7 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border p-10 text-center sm:p-16">
+            <Inbox className="h-7 w-7 text-muted-foreground sm:h-9 sm:w-9" />
             <p className="text-sm text-muted-foreground">{tab === "unread" ? "Semua notifikasi sudah dibaca." : "Belum ada notifikasi."}</p>
           </div>
         )}
@@ -126,7 +126,7 @@ export default function MobileNotifications() {
                   <button
                     key={n.id}
                     onClick={() => handleMarkRead(n.id)}
-                    className={`flex w-full items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card transition ${n.read_at ? "opacity-60" : ""}`}
+                    className={`flex w-full items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card transition hover:border-primary/25 hover:shadow-md active:scale-[0.99] ${n.read_at ? "opacity-60" : ""}`}
                   >
                     <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${meta.tone}`}>
                       <Icon className="h-4 w-4" />
@@ -136,7 +136,7 @@ export default function MobileNotifications() {
                         {!n.read_at && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
                         <span className="truncate">{n.title}</span>
                       </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{n.message || n.body}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground sm:text-sm">{n.message || n.body}</div>
                       <div className="mt-1 text-[11px] text-muted-foreground/70">
                         {new Date(n.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
                       </div>

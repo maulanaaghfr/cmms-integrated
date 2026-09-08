@@ -14,6 +14,18 @@ export const archiveLocation = (id) => apiActiveTenant(`/locations/${id}`, { met
 export const listUsers = (params) => apiActiveTenant("/users", { params: { per_page: 100, ...params } });
 export const createUser = (body) => apiActiveTenant("/users", { method: "POST", body });
 export const updateUser = (id, body) => apiActiveTenant(`/users/${id}`, { method: "PATCH", body });
+// Permanent hard delete (2026-09-08): the backend now actually removes the
+// tenant_users row and cascades through their work orders, PM
+// schedules/occurrences, comments, attachments, signatures, etc. This is
+// irreversible — there is no undo. The one thing it will refuse to do is
+// delete a user who is the creator of an asset (equipment record); the API
+// returns a 409 USER_OWNS_ASSET_RECORDS error in that case instead of
+// silently wiping the asset. See OrganizationController::deleteUser().
+export const deleteUser = (id) => apiActiveTenant(`/users/${id}`, { method: "DELETE" });
+// Bring a previously deactivated (INACTIVE) user back — only relevant for
+// legacy users who still carry that status; new deletions no longer produce
+// an INACTIVE state to reactivate from, since the row is simply gone.
+export const reactivateUser = (id) => updateUser(id, { status: "ACTIVE" });
 
 // Resolve the caller's OWN tenant_user record.
 //

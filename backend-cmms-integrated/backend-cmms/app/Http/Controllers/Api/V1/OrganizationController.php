@@ -12,6 +12,7 @@ use App\Services\PlanLimitService;
 use App\Services\TenantScope;
 use App\Services\TenantUserManagementPolicy;
 use App\Support\ApiData;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -240,6 +241,128 @@ class OrganizationController extends Controller
         $this->audit->tenant($request, 'user.updated', 'TENANT_USER', $user, $before, $data);
 
         return ApiData::item($this->scope->tenantUser($request->attributes->get('tenant_user'), $user));
+    }
+
+    /**
+     * Permanently remove a user from the organization — a real
+     * DELETE FROM tenant_users, not a status flip.
+     *
+     * HISTORY (2026-09-08): This used to be an intentional soft delete
+     * (status -> INACTIVE) because tenant_users is referenced everywhere
+     * (work orders, PM templates, inventory movements, team memberships,
+     * audit logs...). That reasoning still holds for *master/physical*
+     * data, so it hasn't disappeared — it moved into two places:
+     *
+     *   1. The 2026_09_08 migration converted the "history/activity" FKs
+     *      (work orders, maintenance requests, PM schedules/occurrences,
+     *      comments, attachments, signatures, labor entries, assignment
+     *      logs, audit-trail actor links) from RESTRICT to CASCADE, so a
+     *      real DELETE now propagates through all of that automatically.
+     *      Per an explicit product decision, this is allowed to remove or
+     *      "break" other people's records too if this user's fingerprints
+     *      are anywhere in that chain (e.g. deleting a PM template this
+     *      user created also deletes every schedule/occurrence/work order
+     *      generated from it, regardless of who worked on them since).
+     *
+     *   2. `assets.created_by` was deliberately LEFT as RESTRICT. Assets are
+     *      equipment, not activity history — cascading through them would
+     *      mean deleting one user could wipe out an entire piece of
+     *      equipment and every work order/PM/request ever logged against
+     *      it, company-wide. TenantUserManagementPolicy::assertHardDeletable()
+     *      checks for this up front and fails with a clear, specific error
+     *      instead of a raw Postgres FK violation.
+     *
+     * Authorization is unchanged: still routed through
+     * TenantUserManagementPolicy::authorizeUpdate() (status -> INACTIVE
+     * shape) so the existing rules keep applying —
+     *   - a Manager may only remove SUPERVISOR/TECHNICIAN users at their
+     *     own primary site;
+     *   - the last active COMPANY_ADMIN can never be removed.
+     *
+     * This is irreversible. There is no "undo"/reactivate once this
+     * returns 204 — the row, and everything cascaded with it, is gone.
+     */
+    public function deleteUser(Request $request, string $user): mixed
+    {
+        $actor = $request->attributes->get('tenant_user');
+        if ($actor->id === $user) {
+            throw new ApiException('CANNOT_DELETE_SELF', 'You cannot remove your own account.', 422);
+        }
+
+        $this->userPolicy->assertHardDeletable($user);
+
+        try {
+            $before = DB::transaction(function () use ($actor, $user): object {
+                $locked = DB::table('tenant_users')->where('id', $user)->lockForUpdate()->first()
+                    ?? throw new ApiException('TENANT_USER_NOT_FOUND', 'Resource was not found.', 404);
+                $this->userPolicy->authorizeUpdate($actor, $locked, ['status' => 'INACTIVE']);
+
+                DB::table('tenant_users')->where('id', $user)->delete();
+
+                // Polymorphic (entity_type/entity_id) tables have no real FK to
+                // work_orders/maintenance_requests, so cascade deletes above
+                // don't clean them up automatically. Sweep anything now
+                // pointing at a row that no longer exists.
+                $this->purgeOrphanedPolymorphicRecords();
+
+                return $locked;
+            });
+        } catch (QueryException $exception) {
+            // A tenant that has not received the hard-delete migration still
+            // has RESTRICT foreign keys. Convert that database exception into
+            // an actionable API response instead of leaking a 500 to the SPA.
+            $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+            if (in_array($sqlState, ['23000', '23503'], true)) {
+                throw new ApiException(
+                    'USER_DELETE_MIGRATION_REQUIRED',
+                    'User belum dapat dihapus karena migration hard-delete belum diterapkan pada database tenant. Jalankan `php artisan tenants:migrate --force`, lalu coba lagi.',
+                    409,
+                );
+            }
+
+            if ($sqlState === '23514') {
+                throw new ApiException(
+                    'USER_DELETE_DEPENDENCY_CONSTRAINT',
+                    'User masih terhubung ke data aktivitas yang memiliki constraint database. Terapkan migration terbaru, lalu coba hapus kembali.',
+                    409,
+                );
+            }
+
+            throw $exception;
+        }
+
+        // Central DB: this is a separate connection from the tenant DB
+        // transaction above, so it's handled as its own step (same pattern
+        // the previous soft-delete implementation used for its central
+        // membership update).
+        $central = config('tenancy.database.central_connection');
+        DB::connection($central)->table('tenant_memberships')->where('id', $before->central_membership_id)->delete();
+
+        // If this was the user's only tenant membership anywhere, their
+        // central account is now an orphaned shell (no tenant to sign into)
+        // — clean it up too. If they belong to other tenants, leave it
+        // alone; other tenants' access must not be affected.
+        $hasOtherMemberships = DB::connection($central)->table('tenant_memberships')
+            ->where('user_id', $before->central_user_id)->exists();
+        if (! $hasOtherMemberships) {
+            User::query()->where('id', $before->central_user_id)->forceDelete();
+        }
+
+        $this->audit->tenant($request, 'user.deleted', 'TENANT_USER', $user, $before, null);
+
+        return response()->json(null, 204);
+    }
+
+    private function purgeOrphanedPolymorphicRecords(): void
+    {
+        foreach (['comments', 'attachments', 'notifications'] as $table) {
+            DB::table($table)->where('entity_type', 'WORK_ORDER')
+                ->whereNotIn('entity_id', DB::table('work_orders')->select('id'))
+                ->delete();
+            DB::table($table)->where('entity_type', 'REQUEST')
+                ->whereNotIn('entity_id', DB::table('maintenance_requests')->select('id'))
+                ->delete();
+        }
     }
 
     public function teams(Request $request): mixed

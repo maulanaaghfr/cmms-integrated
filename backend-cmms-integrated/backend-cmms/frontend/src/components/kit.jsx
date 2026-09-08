@@ -150,7 +150,7 @@ export function Modal({ open, onClose, title, children, footer, wide = false }) 
   );
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, message }) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel = "Hapus", confirmDisabled = false }) {
   return (
     <Modal
       open={open}
@@ -158,8 +158,8 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message }) {
       title={title || "Konfirmasi"}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Batal</Button>
-          <Button variant="danger" onClick={onConfirm}>Hapus</Button>
+          <Button variant="ghost" onClick={onClose} disabled={confirmDisabled}>Batal</Button>
+          <Button variant="danger" onClick={onConfirm} disabled={confirmDisabled}>{confirmDisabled ? "Menghapus..." : confirmLabel}</Button>
         </>
       }
     >

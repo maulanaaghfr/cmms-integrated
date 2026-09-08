@@ -113,38 +113,41 @@ export default function TechWorkOrders() {
   }, [workOrders, filter, q]);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-extrabold text-foreground">Work Order Saya</h1>
-        <button onClick={() => setAssetScannerOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm active:scale-95">
+        <h1 className="font-display text-xl font-extrabold text-foreground sm:text-2xl">Work Order Saya</h1>
+        <button onClick={() => setAssetScannerOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:brightness-105 active:scale-95 sm:text-sm">
           <ScanLine className="h-4 w-4" /> Scan QR Asset
         </button>
       </div>
       <ScannerSheet open={assetScannerOpen} onClose={() => setAssetScannerOpen(false)} onDetect={handleAssetQr} title="Scan QR Asset / Mesin" />
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari work order..."
-          className="w-full rounded-xl border bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-      </div>
-      <div className="flex gap-2 overflow-x-auto">
-        {FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${filter === f.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-            {f.label}
-            {counted[f.key] > 0 && (
-              <span className={`rounded-full px-1.5 text-[10px] ${filter === f.key ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{counted[f.key]}</span>
-            )}
-          </button>
-        ))}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari work order..."
+            className="w-full rounded-xl border bg-card py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto sm:shrink-0 sm:overflow-visible">
+          {FILTERS.map((f) => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${filter === f.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
+              {f.label}
+              {counted[f.key] > 0 && (
+                <span className={`rounded-full px-1.5 text-[10px] ${filter === f.key ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{counted[f.key]}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
         {loading && [0, 1, 2].map((i) => <div key={i} className="h-[72px] animate-pulse rounded-2xl border border-border bg-muted/50" />)}
-        {!loading && rows.length === 0 && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Tidak ada work order pada filter ini.</div>}
+        {!loading && rows.length === 0 && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">Tidak ada work order pada filter ini.</div>}
         {rows.map((w) => (
-          <button key={w.id} onClick={() => setOpenId(w.id)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card active:scale-[0.99]">
+          <button key={w.id} onClick={() => setOpenId(w.id)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card transition hover:border-primary/25 hover:shadow-md active:scale-[0.99]">
             <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[w.priority] || "bg-muted-foreground"}`} />
             <div className="flex-1 min-w-0">
               <div className="truncate text-sm font-semibold text-foreground">{w.title}</div>
@@ -183,12 +186,12 @@ function FlowStepper({ status }) {
       {FLOW_STEPS.map((s, i) => (
         <React.Fragment key={s.key}>
           <div className="flex flex-col items-center gap-1">
-            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition ${
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition lg:h-7 lg:w-7 ${
               i < idx ? "bg-primary text-primary-foreground" : i === idx ? "bg-primary/15 text-primary ring-2 ring-primary/40" : "bg-muted text-muted-foreground"
             }`}>
               {i < idx ? <Check className="h-3 w-3" /> : i + 1}
             </div>
-            <span className={`text-[9px] font-semibold ${i <= idx ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
+            <span className={`text-[9px] font-semibold lg:text-[10px] ${i <= idx ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
           </div>
           {i < FLOW_STEPS.length - 1 && <div className={`mx-1 h-0.5 flex-1 rounded-full ${i < idx ? "bg-primary" : "bg-muted"}`} />}
         </React.Fragment>
@@ -334,13 +337,13 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
   const pendingChecklist = (d.checklist || []).filter((c) => !c.is_completed).length;
 
   return (
-    <Sheet open onClose={onClose} title={`${d.work_order_number || d.id} — ${d.title}`}>
+    <Sheet open onClose={onClose} title={`${d.work_order_number || d.id} — ${d.title}`} size="xl">
       <FlowStepper status={d.status} />
 
-      <div className="-mx-1 mb-3 flex gap-1 overflow-x-auto border-b border-border pb-2">
+      <div className="-mx-1 mb-3 flex gap-1 overflow-x-auto border-b border-border pb-2 lg:flex-wrap lg:overflow-visible">
         {TABS.map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${tab === t.k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${tab === t.k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
             <t.icon className="h-3.5 w-3.5" /> {t.label}
             {!!t.badge && <span className={`rounded-full px-1.5 text-[10px] ${tab === t.k ? "bg-primary-foreground/20" : "bg-foreground/10"}`}>{t.badge}</span>}
           </button>
@@ -368,19 +371,19 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
           <div className="flex flex-wrap gap-2 pt-2">
             {d.status === "ASSIGNED" && isAssignee && (
               <button onClick={() => act("acknowledge")} disabled={saving}
-                className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">
+                className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60">
                 <Check className="h-3.5 w-3.5" /> Konfirmasi
               </button>
             )}
             {d.status === "ASSIGNED" && isAssignee && (
               <button onClick={() => act("start")} disabled={saving}
-                className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">
+                className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60">
                 <Play className="h-3.5 w-3.5" /> Mulai
               </button>
             )}
             {d.status === "IN_PROGRESS" && isAssignee && (
               <button onClick={() => { setCompletionNote(""); setCompleteOpen(true); }} disabled={saving}
-                className="flex items-center gap-1.5 rounded-xl bg-[hsl(var(--success))] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">
+                className="flex items-center gap-1.5 rounded-xl bg-[hsl(var(--success))] px-4 py-2 text-xs font-semibold text-white transition hover:brightness-105 disabled:opacity-60">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Selesaikan
               </button>
             )}
@@ -395,8 +398,8 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
                 className="w-full resize-none rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
               <div className="flex gap-2">
-                <button onClick={() => setCompleteOpen(false)} disabled={saving} className="flex-1 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground disabled:opacity-60">Batal</button>
-                <button onClick={submitCompletion} disabled={saving} className="flex-1 rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                <button onClick={() => setCompleteOpen(false)} disabled={saving} className="flex-1 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/40 disabled:opacity-60">Batal</button>
+                <button onClick={submitCompletion} disabled={saving} className="flex-1 rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:opacity-60">
                   {saving ? "Menyimpan..." : "Konfirmasi Selesai"}
                 </button>
               </div>
@@ -409,17 +412,19 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
         <div className="space-y-3">
           <div className="rounded-2xl border border-border p-3 text-xs text-muted-foreground">Semua checklist wajib diselesaikan sebelum WO dapat dikirim ke approval Manager.</div>
           {(d.checklist || []).length === 0 && <p className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada checklist pada WO ini.</p>}
-          {(d.checklist || []).map((item) => (
-            <label key={item.id} className="flex items-start gap-3 rounded-xl border border-border p-3">
-              <input type="checkbox" checked={!!item.is_completed} disabled={!isAssignee || d.status !== "IN_PROGRESS" || saving} onChange={(e) => updateChecklist(item, e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
-              <span className={item.is_completed ? "text-sm text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{item.label}</span>
-            </label>
-          ))}
+          <div className="grid gap-2 lg:grid-cols-2">
+            {(d.checklist || []).map((item) => (
+              <label key={item.id} className="flex items-start gap-3 rounded-xl border border-border p-3">
+                <input type="checkbox" checked={!!item.is_completed} disabled={!isAssignee || d.status !== "IN_PROGRESS" || saving} onChange={(e) => updateChecklist(item, e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+                <span className={item.is_completed ? "text-sm text-muted-foreground line-through" : "text-sm font-medium text-foreground"}>{item.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
       )}
 
       {tab === "evidence" && (
-        <div className="space-y-5">
+        <div className="space-y-5 lg:grid lg:grid-cols-3 lg:gap-4 lg:space-y-0">
           {['BEFORE', 'DURING', 'AFTER'].map((role) => (
             <div key={role} className="rounded-2xl border border-border p-3">
               <p className="mb-2 text-xs font-bold text-foreground">Foto {role.toLowerCase()}</p>
@@ -427,10 +432,10 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
               <p className="mt-2 text-[11px] text-muted-foreground">Foto disimpan ke audit trail Work Order.</p>
             </div>
           ))}
-          <div className="rounded-2xl border border-border p-3">
+          <div className="rounded-2xl border border-border p-3 lg:col-span-3">
             <div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold text-foreground">Tanda tangan teknisi</p><PenLine className="h-4 w-4 text-primary" /></div>
-            {d.signatures?.length ? <p className="text-xs text-emerald-600">Tersimpan pada {new Date(d.signatures[0].signed_at).toLocaleString("id-ID")}</p> : <button onClick={() => setSignatureOpen(true)} disabled={!isAssignee || d.status !== "IN_PROGRESS"} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">Ambil Tanda Tangan</button>}
-            {signatureOpen && <div className="mt-3"><SignaturePad onSave={saveSignature} /></div>}
+            {d.signatures?.length ? <p className="text-xs text-emerald-600">Tersimpan pada {new Date(d.signatures[0].signed_at).toLocaleString("id-ID")}</p> : <button onClick={() => setSignatureOpen(true)} disabled={!isAssignee || d.status !== "IN_PROGRESS"} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-50 lg:w-auto lg:px-6">Ambil Tanda Tangan</button>}
+            {signatureOpen && <div className="mt-3 lg:max-w-sm"><SignaturePad onSave={saveSignature} /></div>}
           </div>
         </div>
       )}
@@ -444,20 +449,20 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
               {d.status === "IN_PROGRESS" && isAssignee && (
                 <>
                   <button onClick={() => act("timer/start")} disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60">
                     <Play className="h-4 w-4" /> Start Timer
                   </button>
                   <button onClick={() => act("timer/stop")} disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-5 py-2.5 text-sm font-semibold disabled:opacity-60">
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-5 py-2.5 text-sm font-semibold transition hover:bg-muted/40 disabled:opacity-60">
                     <Square className="h-4 w-4" /> Stop
                   </button>
                 </>
               )}
             </div>
           </div>
-          <div className="space-y-1.5">
+          <div className="grid gap-1.5 lg:grid-cols-2">
             {(d.labor_entries || []).length === 0 && (
-              <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Belum ada catatan waktu kerja.</p>
+              <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground lg:col-span-2">Belum ada catatan waktu kerja.</p>
             )}
             {(d.labor_entries || []).map((l, i) => (
               <div key={i} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs">
@@ -478,9 +483,9 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
               placeholder="Catatan lapangan..."
               className="flex-1 rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-            <button onClick={sendNote} disabled={saving || !note.trim()} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">Kirim</button>
+            <button onClick={sendNote} disabled={saving || !note.trim()} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60">Kirim</button>
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-2 lg:grid-cols-2">
             {(d.comments || []).length === 0 && <p className="text-xs text-muted-foreground">Belum ada catatan.</p>}
             {(d.comments || []).map((c, i) => {
               const isMe = c.author_id === user?.tenantUserId;
@@ -499,14 +504,14 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
       )}
 
       {tab === "parts" && (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
           {isAssignee && d.status === "IN_PROGRESS" ? (
             <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-3 space-y-3">
               <p className="text-xs font-semibold text-foreground">Scan part yang dipakai</p>
               <div className="flex gap-2">
                 <input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Barcode / kode part"
                   className="min-w-0 flex-1 rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-                <button onClick={() => setScannerOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"><ScanLine className="h-4 w-4" /> Scan</button>
+                <button onClick={() => setScannerOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:brightness-105"><ScanLine className="h-4 w-4" /> Scan</button>
               </div>
               <div className="grid grid-cols-[1fr_88px] gap-2">
                 <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="rounded-xl border bg-background px-3 py-2.5 text-sm">
@@ -515,7 +520,7 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
                 </select>
                 <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="rounded-xl border bg-background px-3 py-2.5 text-sm" />
               </div>
-              <button onClick={recordPart} disabled={saving} className="w-full rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+              <button onClick={recordPart} disabled={saving} className="w-full rounded-xl bg-[hsl(var(--success))] py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:opacity-60">
                 {saving ? "Mencatat..." : "Gunakan Part"}
               </button>
             </div>
@@ -535,7 +540,7 @@ function WorkOrderMobileDetail({ detail: d, onClose, onRefresh, user }) {
         </div>
       )}
 
-      <button onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground">
+      <button onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/40 lg:w-auto lg:px-8">
         <X className="h-4 w-4" /> Tutup
       </button>
     </Sheet>

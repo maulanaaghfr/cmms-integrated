@@ -34,51 +34,66 @@ export default function MobileProfile() {
   const initials = (user?.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 soft-card">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
-          {initials}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <div className="truncate font-display text-base font-bold text-foreground">{user?.name}</div>
-            <BadgeCheck className="h-4 w-4 shrink-0 text-primary" />
+    <div className="mx-auto w-full max-w-5xl space-y-5 lg:space-y-0">
+      <h1 className="hidden font-display text-2xl font-extrabold text-foreground lg:mb-6 lg:block">Profil Saya</h1>
+
+      <div className="space-y-5 lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-6 lg:space-y-0">
+        {/* left column: identity + performance */}
+        <div className="space-y-5 lg:sticky lg:top-4">
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 soft-card lg:flex-col lg:items-start lg:gap-4 lg:p-5 lg:text-left">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground lg:h-16 lg:w-16 lg:text-xl">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <div className="truncate font-display text-base font-bold text-foreground lg:text-lg">{user?.name}</div>
+                <BadgeCheck className="h-4 w-4 shrink-0 text-primary" />
+              </div>
+              <div className="truncate text-xs text-muted-foreground lg:text-sm">{roleLabel} · {user?.company}</div>
+            </div>
           </div>
-          <div className="truncate text-xs text-muted-foreground">{roleLabel} · {user?.company}</div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <MiniStat icon={ShieldCheck} value={myCompleted} label="WO Selesai" />
-        <MiniStat icon={Clock3} value={myActive} label="WO Aktif" />
-        <MiniStat icon={TrendingUp} value={completionRate !== null ? `${completionRate}%` : "-"} label="Tingkat Selesai" />
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-4 soft-card space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Info Akun</p>
-        <InfoRow icon={Mail} label="Email" value={user?.email || "-"} />
-        <InfoRow icon={ShieldCheck} label="Peran" value={roleLabel} />
-        <InfoRow icon={Building2} label="Perusahaan" value={user?.company || "-"} />
-      </div>
-
-      <div className="space-y-2.5">
-        <button
-          onClick={() => setPwOpen(true)}
-          className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card active:scale-[0.99]"
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="h-4 w-4" /></div>
-          <div className="flex-1">
-            <div className="text-sm font-semibold text-foreground">Ganti Password</div>
-            <div className="text-xs text-muted-foreground">Perbarui password akun secara berkala</div>
+          <div className="grid grid-cols-3 gap-2.5">
+            <MiniStat icon={ShieldCheck} value={myCompleted} label="WO Selesai" />
+            <MiniStat icon={Clock3} value={myActive} label="WO Aktif" />
+            <MiniStat icon={TrendingUp} value={completionRate !== null ? `${completionRate}%` : "-"} label="Tingkat Selesai" />
           </div>
-        </button>
 
-        <button
-          onClick={() => setConfirmLogout(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 py-3 text-sm font-semibold text-destructive active:scale-[0.99]"
-        >
-          <LogOut className="h-4 w-4" /> Keluar
-        </button>
+          <button
+            onClick={() => setConfirmLogout(true)}
+            className="hidden w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 py-3 text-sm font-semibold text-destructive transition hover:bg-destructive/10 active:scale-[0.99] lg:flex"
+          >
+            <LogOut className="h-4 w-4" /> Keluar
+          </button>
+        </div>
+
+        {/* right column: account details + actions */}
+        <div className="space-y-2.5 lg:space-y-3">
+          <div className="rounded-2xl border border-border bg-card p-4 soft-card space-y-3 lg:p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Info Akun</p>
+            <InfoRow icon={Mail} label="Email" value={user?.email || "-"} />
+            <InfoRow icon={ShieldCheck} label="Peran" value={roleLabel} />
+            <InfoRow icon={Building2} label="Perusahaan" value={user?.company || "-"} />
+          </div>
+
+          <button
+            onClick={() => setPwOpen(true)}
+            className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left soft-card transition hover:border-primary/25 hover:shadow-md active:scale-[0.99] lg:p-5"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="h-4 w-4" /></div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-foreground">Ganti Password</div>
+              <div className="text-xs text-muted-foreground">Perbarui password akun secara berkala</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setConfirmLogout(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 py-3 text-sm font-semibold text-destructive transition hover:bg-destructive/10 active:scale-[0.99] lg:hidden"
+          >
+            <LogOut className="h-4 w-4" /> Keluar
+          </button>
+        </div>
       </div>
 
       <ChangePasswordSheet open={pwOpen} onClose={() => setPwOpen(false)} />
@@ -86,8 +101,8 @@ export default function MobileProfile() {
       <Sheet open={confirmLogout} onClose={() => setConfirmLogout(false)} title="Keluar dari akun?">
         <p className="text-sm text-muted-foreground">Kamu perlu login kembali untuk mengakses work order dan notifikasi.</p>
         <div className="mt-4 flex gap-2">
-          <button onClick={() => setConfirmLogout(false)} className="flex-1 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground">Batal</button>
-          <button onClick={logout} className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground">Ya, Keluar</button>
+          <button onClick={() => setConfirmLogout(false)} className="flex-1 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/40">Batal</button>
+          <button onClick={logout} className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground transition hover:brightness-105">Ya, Keluar</button>
         </div>
       </Sheet>
     </div>
@@ -153,11 +168,11 @@ function ChangePasswordSheet({ open, onClose }) {
             className="w-full rounded-xl border bg-background px-3 py-2.5 pr-10 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
-        <button type="button" onClick={() => setShow((s) => !s)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <button type="button" onClick={() => setShow((s) => !s)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition hover:text-foreground">
           {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {show ? "Sembunyikan" : "Tampilkan"} password
         </button>
 
-        <button onClick={submit} disabled={loading} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+        <button onClick={submit} disabled={loading} className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60">
           {loading ? "Menyimpan..." : "Simpan Password Baru"}
         </button>
       </div>

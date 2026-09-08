@@ -72,6 +72,20 @@ function MobileAppShell() {
   );
 }
 
+// FIX: a "reset your password" email link (?token=...&email=...) must always
+// open the reset form, even in a browser tab that already has an active
+// session (e.g. the user stayed logged in on their laptop, then requested a
+// reset from their phone and opened the link on the laptop too — or simply
+// never logged out). Previously `Shell` only rendered <Login /> when there
+// was NO signed-in user, so an active session made it fall straight through
+// to the normal app/Dashboard branch below and the reset link's token/email
+// query params were silently discarded — the user never saw the "choose a
+// new password" screen and had no way to complete the reset.
+function hasPasswordResetLink(search) {
+  const params = new URLSearchParams(search);
+  return Boolean(params.get("token") && params.get("email"));
+}
+
 function Shell() {
   const { user, authLoading } = useApp();
   const location = useLocation();
@@ -83,7 +97,7 @@ function Shell() {
       </div>
     );
   }
-  if (!user) return <Login />;
+  if (!user || hasPasswordResetLink(location.search)) return <Login />;
   // FIX (2026-09-04): must come before the mobile/desktop branch below —
   // the backend refuses every tenant API call (work orders, users,
   // notifications...) with 403 PASSWORD_CHANGE_REQUIRED while this is

@@ -36,20 +36,39 @@ function normalizeScanValue(value) {
   return v.toUpperCase();
 }
 
-/* ------------------------------ bottom sheet ----------------------------- */
-export function Sheet({ open, onClose, title, children }) {
+/* --------------------------------- sheet ---------------------------------
+ * On phones this renders as a bottom sheet (the familiar drag-up-from-edge
+ * pattern). From the `sm` breakpoint up — where there's no thumb-reach
+ * constraint and no OS "swipe from bottom" gesture to collide with — it
+ * becomes a centered modal card instead, which is the pattern people expect
+ * from mouse/keyboard use. `size` controls how wide that desktop modal gets,
+ * since a signature pad needs far less room than a tabbed work-order detail.
+ * --------------------------------------------------------------------- */
+const SHEET_SIZES = {
+  sm: "sm:max-w-md",
+  md: "sm:max-w-lg",
+  lg: "sm:max-w-2xl",
+  xl: "sm:max-w-4xl",
+};
+
+export function Sheet({ open, onClose, title, children, size = "md" }) {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[60] flex items-end bg-foreground/50 backdrop-blur-sm"
+        <motion.div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-foreground/50 backdrop-blur-sm sm:items-center sm:p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "tween", duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-card p-4 pb-8 aitoma-scroll">
-            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-muted" />
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-display text-base font-bold text-foreground">{title}</h3>
-              <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
+        >
+          <motion.div
+            initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+            transition={{ type: "tween", duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className={`aitoma-scroll max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-card p-4 pb-8 shadow-2xl sm:max-h-[85vh] sm:rounded-3xl sm:p-6 sm:pb-6 ${SHEET_SIZES[size] || SHEET_SIZES.md}`}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-muted sm:hidden" />
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-display text-base font-bold text-foreground sm:text-lg">{title}</h3>
+              <button onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition hover:bg-muted/70">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -78,7 +97,7 @@ export function slaState(w) {
 export function SlaBadge({ w }) {
   const s = slaState(w);
   const tones = { success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]", warning: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]", danger: "bg-destructive/10 text-destructive", muted: "bg-muted text-muted-foreground" };
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[s.tone]}`}>{s.label}</span>;
+  return <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[s.tone]}`}>{s.label}</span>;
 }
 
 /* ------------------------------ barcode scanner --------------------------- */
@@ -216,38 +235,42 @@ export function ScannerSheet({ open, onClose, onDetect, title = "Scan Barcode" }
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title={title}>
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-3">
-          <div className="flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><ScanLine className="h-5 w-5" /></div>
-            <div><p className="text-sm font-bold text-foreground">Arahkan ke QR Asset</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Posisikan QR di dalam bingkai. Kamu juga bisa memilih gambar QR dari galeri.</p></div>
-          </div>
-        </div>
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-950 shadow-inner">
-          {camOn ? (
-            <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-white/60">
-              <Camera className="h-8 w-8" />
-              <span className="text-xs">Kamera tidak tersedia — gunakan input manual</span>
+    <Sheet open={open} onClose={onClose} title={title} size="lg">
+      <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-5 sm:space-y-0">
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-3">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><ScanLine className="h-5 w-5" /></div>
+              <div><p className="text-sm font-bold text-foreground">Arahkan ke QR Asset</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Posisikan QR di dalam bingkai. Kamu juga bisa memilih gambar QR dari galeri.</p></div>
             </div>
-          )}
-          <div className="pointer-events-none absolute inset-8 rounded-2xl border-2 border-primary/80">
-            <ScanLine className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 animate-pulse text-primary" />
+          </div>
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-950 shadow-inner">
+            {camOn ? (
+              <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/60">
+                <Camera className="h-8 w-8" />
+                <span className="text-xs">Kamera tidak tersedia — gunakan input manual</span>
+              </div>
+            )}
+            <div className="pointer-events-none absolute inset-8 rounded-2xl border-2 border-primary/80">
+              <ScanLine className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 animate-pulse text-primary" />
+            </div>
           </div>
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={scanImageFile} />
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={fileLoading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-3 text-xs font-bold text-primary transition hover:bg-primary/10 active:scale-[0.98] disabled:opacity-60">
-            {fileLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" /> : <ImageIcon className="h-4 w-4" />} {fileLoading ? "Membaca..." : "Pilih dari Galeri"}
-          </button>
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-3 text-[11px] font-medium text-muted-foreground"><Upload className="h-4 w-4" /> JPG, PNG, screenshot</div>
-        </div>
-        <div className="flex gap-2">
-          <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Atau ketik kode QR/barcode..."
-            className="flex-1 rounded-xl border bg-background px-3 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
-          <button onClick={submit} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm active:scale-95">Cari</button>
+        <div className="flex flex-col gap-4">
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={scanImageFile} />
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={fileLoading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-3 text-xs font-bold text-primary transition hover:bg-primary/10 active:scale-[0.98] disabled:opacity-60">
+              {fileLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" /> : <ImageIcon className="h-4 w-4" />} {fileLoading ? "Membaca..." : "Pilih dari Galeri"}
+            </button>
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-3 text-[11px] font-medium text-muted-foreground"><Upload className="h-4 w-4" /> JPG, PNG, screenshot</div>
+          </div>
+          <div className="flex gap-2">
+            <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Atau ketik kode QR/barcode..."
+              className="flex-1 rounded-xl border bg-background px-3 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <button onClick={submit} className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-105 active:scale-95">Cari</button>
+          </div>
         </div>
       </div>
     </Sheet>
@@ -304,8 +327,8 @@ export function SignaturePad({ onSave }) {
         onTouchStart={start} onTouchMove={move} onTouchEnd={end}
         className="w-full touch-none rounded-2xl border-2 border-dashed border-border bg-white" />
       <div className="flex gap-2">
-        <button onClick={clear} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground"><Eraser className="h-4 w-4" /> Hapus</button>
-        <button onClick={save} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"><Check className="h-4 w-4" /> Simpan Tanda Tangan</button>
+        <button onClick={clear} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/40"><Eraser className="h-4 w-4" /> Hapus</button>
+        <button onClick={save} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105"><Check className="h-4 w-4" /> Simpan Tanda Tangan</button>
       </div>
     </div>
   );
@@ -327,12 +350,12 @@ export function GpsButton({ label = "Bagikan Lokasi Saya", targetCoords }) {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}`, "_blank");
   };
   return (
-    <div className="flex gap-2">
-      <button onClick={locate} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold">
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <button onClick={locate} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold transition hover:bg-muted/40">
         <MapPin className="h-4 w-4 text-primary" /> {loc ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : label}
       </button>
       {targetCoords && (
-        <button onClick={navigate} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">
+        <button onClick={navigate} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 sm:py-0">
           <Navigation className="h-4 w-4" /> Navigasi
         </button>
       )}
@@ -362,11 +385,11 @@ export function PhotoCapture({ photos = [], onAdd, onRemove }) {
   return (
     <div className="space-y-3">
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
-      <button onClick={() => inputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border py-6 text-sm font-semibold text-muted-foreground active:scale-[0.99]">
+      <button onClick={() => inputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border py-6 text-sm font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-primary active:scale-[0.99]">
         <Camera className="h-5 w-5 text-primary" /> Ambil Foto (before/during/after)
       </button>
       {photos.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
           {photos.map((p, i) => (
             <div key={i} className="group relative aspect-square overflow-hidden rounded-xl border border-border">
               <img src={p.url} alt="" className="h-full w-full object-cover" />

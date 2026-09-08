@@ -40,62 +40,73 @@ export default function OperatorHome() {
   const openReq = requests.filter((r) => ACTIVE_STATUSES.includes(r.status)).length;
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-6xl space-y-5 lg:space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">Halo,</p>
-        <h1 className="font-display text-2xl font-extrabold text-foreground">{(user?.name || "").split(" ")[0]} 👋</h1>
+        <h1 className="font-display text-2xl font-extrabold text-foreground sm:text-3xl">{(user?.name || "").split(" ")[0]} 👋</h1>
       </div>
 
-      <Link to="/requests" className="flex items-center gap-3 rounded-2xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/25 active:scale-[0.99]">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15"><ClipboardPlus className="h-5 w-5" /></div>
-        <div className="flex-1">
-          <div className="font-display text-sm font-bold">Ajukan Permintaan Maintenance</div>
-          <div className="text-xs text-white/80">Laporkan masalah peralatan dengan foto</div>
-        </div>
-        <ArrowRight className="h-4 w-4" />
-      </Link>
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
-          <div className="font-display text-xl font-extrabold text-foreground">{requests.length}</div>
-          <div className="text-[11px] text-muted-foreground">Total Permintaan</div>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
-          <div className="font-display text-xl font-extrabold text-foreground">{openReq}</div>
-          <div className="text-[11px] text-muted-foreground">Sedang Diproses</div>
-        </div>
-      </div>
-
-      <button onClick={() => setEqOpen(true)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 soft-card active:scale-[0.99]">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent"><Boxes className="h-5 w-5" /></div>
-        <div className="flex-1 text-left">
-          <div className="font-display text-sm font-bold text-foreground">Info Peralatan</div>
-          <div className="text-xs text-muted-foreground">{assets.length} unit terdaftar</div>
-        </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground" />
-      </button>
-
-      <div>
-        <h2 className="mb-2 font-display text-sm font-bold text-foreground">Permintaan Terbaru</h2>
-        <div className="space-y-2.5">
-          {loading && <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Memuat...</div>}
-          {!loading && requests.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Belum ada permintaan.</div>
-          )}
-          {requests.slice(0, 4).map((r) => (
-            <div key={r.id} className="rounded-2xl border border-border bg-card p-4 soft-card">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">{r.title}</span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{r.status}</span>
-              </div>
-              <div className="mt-0.5 text-xs text-muted-foreground">{r.request_number}</div>
+      <div className="grid gap-5 lg:grid-cols-3 lg:items-start lg:gap-6">
+        {/* main column */}
+        <div className="space-y-5 lg:col-span-2">
+          <Link to="/requests" className="flex items-center gap-3 rounded-2xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/25 transition hover:brightness-105 active:scale-[0.99] lg:p-5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><ClipboardPlus className="h-5 w-5" /></div>
+            <div className="flex-1">
+              <div className="font-display text-sm font-bold lg:text-base">Ajukan Permintaan Maintenance</div>
+              <div className="text-xs text-white/80">Laporkan masalah peralatan dengan foto</div>
             </div>
-          ))}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Permintaan Terbaru</h2>
+              <Link to="/requests" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Lihat semua <ArrowRight className="h-3 w-3" /></Link>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {loading && [0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-muted/50" />)}
+              {!loading && requests.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground sm:col-span-2">Belum ada permintaan.</div>
+              )}
+              {requests.slice(0, 4).map((r) => (
+                <div key={r.id} className="rounded-2xl border border-border bg-card p-4 soft-card transition hover:border-primary/20 hover:shadow-md">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-foreground">{r.title}</span>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{r.status}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">{r.request_number}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* sidebar */}
+        <div className="space-y-4 lg:sticky lg:top-4">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
+              <div className="font-display text-xl font-extrabold text-foreground">{requests.length}</div>
+              <div className="text-[11px] text-muted-foreground">Total Permintaan</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
+              <div className="font-display text-xl font-extrabold text-foreground">{openReq}</div>
+              <div className="text-[11px] text-muted-foreground">Sedang Diproses</div>
+            </div>
+          </div>
+
+          <button onClick={() => setEqOpen(true)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 soft-card transition hover:border-primary/20 hover:shadow-md active:scale-[0.99]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Boxes className="h-5 w-5" /></div>
+            <div className="flex-1 text-left">
+              <div className="font-display text-sm font-bold text-foreground">Info Peralatan</div>
+              <div className="text-xs text-muted-foreground">{assets.length} unit terdaftar</div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </button>
         </div>
       </div>
 
-      <Sheet open={eqOpen} onClose={() => setEqOpen(false)} title="Info Peralatan">
-        <div className="space-y-2.5">
+      <Sheet open={eqOpen} onClose={() => setEqOpen(false)} title="Info Peralatan" size="lg">
+        <div className="grid gap-2.5 sm:grid-cols-2">
           {assets.map((a) => (
             <div key={a.id} className="rounded-2xl border border-border p-3.5">
               <div className="flex items-center justify-between">

@@ -52,6 +52,11 @@ Route::middleware(['api', InitializeTenancyByDomain::class, PreventAccessFromCen
             Route::middleware('tenant.role:COMPANY_ADMIN,MANAGER')->group(function (): void {
                 Route::post('users', [OrganizationController::class, 'createUser'])->middleware('tenant.feature:core.teams');
                 Route::patch('users/{user}', [OrganizationController::class, 'updateUser'])->middleware('tenant.feature:core.teams');
+                // Permanent hard delete (real DELETE FROM tenant_users, cascades
+                // through work orders/PM/comments/attachments/etc). Irreversible.
+                // See OrganizationController::deleteUser() for the full picture,
+                // including the one deliberate exception (assets.created_by).
+                Route::delete('users/{user}', [OrganizationController::class, 'deleteUser'])->middleware('tenant.feature:core.teams');
             });
 
             Route::post('sites', [OrganizationController::class, 'createSite'])

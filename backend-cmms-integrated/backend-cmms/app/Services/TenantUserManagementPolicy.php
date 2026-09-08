@@ -58,6 +58,36 @@ class TenantUserManagementPolicy
         }
     }
 
+    /**
+     * Guard against a hard delete that would silently take master/physical
+     * data down with it.
+     *
+     * A real DELETE FROM tenant_users now cascades through work orders, PM
+     * templates/schedules/occurrences, comments, attachments, signatures,
+     * labor entries, and audit-trail actor links — that is intentional (see
+     * the 2026_09_08 migration). What it deliberately does NOT cascade
+     * through is `assets.created_by`, which is still ON DELETE RESTRICT.
+     *
+     * An asset is equipment, not a piece of this user's activity history —
+     * deleting it would also cascade-wipe every work order, PM schedule,
+     * and maintenance request ever logged against that asset, regardless of
+     * who touched them. That is a company-wide data-loss blast radius the
+     * "delete this one user" action should never trigger implicitly, so we
+     * fail loudly and specifically instead of letting a raw FK violation
+     * bubble up from Postgres.
+     */
+    public function assertHardDeletable(string $tenantUserId): void
+    {
+        $ownedAssetCount = DB::table('assets')->where('created_by', $tenantUserId)->count();
+        if ($ownedAssetCount > 0) {
+            throw new ApiException(
+                'USER_OWNS_ASSET_RECORDS',
+                "This user is recorded as the creator of {$ownedAssetCount} asset(s). Deleting them would cascade-delete those assets and everything ever logged against them (work orders, PM schedules, maintenance requests) for every user involved. Reassign or archive those assets first.",
+                409,
+            );
+        }
+    }
+
     private function ensureManagerCanManageRoleAndSite(object $actor, string $role, ?string $siteId): void
     {
         if (! in_array($role, self::MANAGER_MANAGED_ROLES, true)) {

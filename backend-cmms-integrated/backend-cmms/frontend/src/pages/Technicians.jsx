@@ -5,7 +5,7 @@ import { useApp } from "../store/store";
 import {
   PageHeader, Card, Pill, Button, IconButton, Modal, ConfirmDialog, Field, Input, Select, Reveal, StatCard, Tabs,
 } from "../components/kit";
-import { listUsers, createUser, updateUser } from "../lib/organization";
+import { listUsers, createUser, updateUser, deleteUser } from "../lib/organization";
 import { listWorkOrders } from "../lib/workorders";
 
 const ROLE_OPTIONS = [
@@ -33,6 +33,7 @@ export default function Technicians() {
   const [form, setForm] = useState(null);
   const [del, setDel] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,13 +115,20 @@ export default function Technicians() {
   };
 
   const confirmDel = async () => {
+    if (!del || deleting) return;
+    setDeleting(true);
     try {
-      await updateUser(del.id, { status: "INACTIVE" });
-      toast.success("Teknisi dinonaktifkan.");
+      await deleteUser(del.id);
+      // Remove it immediately from the visible profile cards. The follow-up
+      // reload keeps the list consistent with the database after the DELETE.
+      setTechnicians((current) => current.filter((technician) => technician.id !== del.id));
+      toast.success(`Teknisi "${del.full_name}" berhasil dihapus.`);
       setDel(null);
-      load();
+      await load();
     } catch (err) {
-      toast.error(err.message || "Gagal menonaktifkan teknisi.");
+      toast.error(err.message || "Gagal menghapus teknisi.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -312,8 +320,9 @@ export default function Technicians() {
 
       <ConfirmDialog
         open={!!del} onClose={() => setDel(null)} onConfirm={confirmDel}
-        title="Nonaktifkan Teknisi"
-        message={`Nonaktifkan "${del?.full_name}"? Status akan diubah menjadi INACTIVE.`}
+        title="Hapus Teknisi Permanen"
+        confirmDisabled={deleting}
+        message={`Hapus "${del?.full_name}" secara permanen? Data user dan aktivitas yang terhubung akan ikut dihapus. Tindakan ini tidak dapat dibatalkan.`}
       />
     </Reveal>
   );

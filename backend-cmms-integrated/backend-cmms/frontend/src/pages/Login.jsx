@@ -334,9 +334,6 @@ export default function Login() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {fp.code ? "Pilih password baru untuk akun Anda." : fp.sent ? "Periksa email Anda dan buka tautan reset yang kami kirimkan." : "Kami akan mengirim tautan reset ke email Anda."}
                 </p>
-                <p className="mt-2 rounded-lg bg-[hsl(var(--warning))]/10 px-3 py-2 text-xs text-[hsl(var(--warning))]">
-                  Mode demo — belum tersambung ke email reset password backend yang asli.
-                </p>
                 <form onSubmit={submitForgot} className="mt-6 space-y-4">
                   {!fp.sent && <Field label="Email" required>
                     <Input type="email" value={fp.email} onChange={(e) => setFp({ ...fp, email: e.target.value })} placeholder="nama@perusahaan.id" />
@@ -361,6 +358,31 @@ export default function Login() {
                   {!fp.sent && <Button type="submit" disabled={busy} className="w-full">{busy ? "Memproses..." : <>Kirim Tautan Reset <ArrowRight className="h-4 w-4" /></>}</Button>}
                   {fp.code && <Button type="submit" disabled={busy} className="w-full">{busy ? "Memproses..." : <>Reset Password <CheckCircle2 className="h-4 w-4" /></>}</Button>}
                 </form>
+                {/* FIX: once a reset link has been requested (fp.sent) but the user
+                    hasn't opened the emailed link yet (fp.code still empty), the form
+                    used to render no fields and no button at all — a dead end if the
+                    email was slow, filtered to spam, or sent to the wrong inbox. This
+                    lets them fire off another link without leaving the screen. */}
+                {fp.sent && !fp.code && (
+                  <div className="mt-4 space-y-2 text-center">
+                    <p className="text-xs text-muted-foreground">Tidak menerima email?</p>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await requestPasswordReset(fp.email.trim());
+                          toast.success("Tautan reset dikirim ulang. Periksa email Anda.");
+                        } catch (error) { toast.error(error.message || "Gagal mengirim ulang tautan reset."); }
+                        finally { setBusy(false); }
+                      }}
+                      className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                    >
+                      Kirim ulang tautan reset
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
