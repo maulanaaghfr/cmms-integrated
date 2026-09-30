@@ -233,6 +233,7 @@ class BillingController extends Controller
 
         $billingPeriod = $data['billing_period'] ?? $current?->billing_period ?? 'MONTHLY';
         $priceSnapshot = $billingPeriod === 'YEARLY' ? ($plan->annual_price ?? $plan->monthly_price * 12) : $plan->monthly_price;
+        $snapshotCols = app(\App\Services\PlanSnapshotService::class)->forPlan($central, $plan);
         $tenantRow = $central->table('tenants')->where('id', $tenantId)->first();
         if (! $tenantRow) {
             throw new ApiException('TENANT_NOT_FOUND', 'Tenant was not found.', 404);
@@ -242,7 +243,7 @@ class BillingController extends Controller
         $invoiceId = null;
         $isFreePlan = $priceSnapshot <= 0;
 
-        $central->transaction(function () use ($central, $tenantId, $plan, $billingPeriod, $priceSnapshot, $tenantRow, $subscriptionId, &$invoiceId, $current, $isFreePlan): void {
+        $central->transaction(function () use ($central, $tenantId, $plan, $billingPeriod, $priceSnapshot, $tenantRow, $subscriptionId, &$invoiceId, $current, $isFreePlan, $snapshotCols): void {
             // Selecting a plan more than once before paying must not leave
             // several PENDING_PAYMENT rows (or several dangling unpaid
             // invoices) lying around — void whatever was pending before.
@@ -265,7 +266,7 @@ class BillingController extends Controller
                 $periodEnd = $billingPeriod === 'YEARLY' ? now()->addYear() : now()->addMonth();
                 $central->table('subscriptions')->insert([
                     'id' => $subscriptionId, 'tenant_id' => $tenantId, 'plan_id' => $plan->id,
-                    'status' => 'ACTIVE', 'billing_period' => $billingPeriod, 'price_snapshot' => $priceSnapshot,
+                    'status' => 'ACTIVE', 'billing_period' => $billingPeriod, 'price_snapshot' => $priceSnapshot, ...$snapshotCols,
                     'currency_code' => $plan->currency_code, 'starts_at' => now(), 'trial_ends_at' => null,
                     'current_period_start' => now(), 'current_period_end' => $periodEnd, 'grace_ends_at' => null,
                     'auto_renew' => true, 'cancelled_at' => null, 'cancellation_reason' => null,
@@ -281,7 +282,7 @@ class BillingController extends Controller
             // See settlePayment(), which flips this row to ACTIVE.
             $central->table('subscriptions')->insert([
                 'id' => $subscriptionId, 'tenant_id' => $tenantId, 'plan_id' => $plan->id,
-                'status' => 'PENDING_PAYMENT', 'billing_period' => $billingPeriod, 'price_snapshot' => $priceSnapshot,
+                'status' => 'PENDING_PAYMENT', 'billing_period' => $billingPeriod, 'price_snapshot' => $priceSnapshot, ...$snapshotCols,
                 'currency_code' => $plan->currency_code, 'starts_at' => now(), 'trial_ends_at' => null,
                 'current_period_start' => null, 'current_period_end' => null, 'grace_ends_at' => null,
                 'auto_renew' => true, 'cancelled_at' => null, 'cancellation_reason' => null,

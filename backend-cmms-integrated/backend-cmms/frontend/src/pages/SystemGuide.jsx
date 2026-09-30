@@ -149,24 +149,24 @@ function FlowMeta({ trigger, participants, outcome, example, tips, issues }) {
 /* ------------------------------------------------------------------ */
 
 const WORK_ORDER_FLOW = [
-  { icon: ClipboardList, role: "Manager", title: "Buat Work Order", desc: "Manager atau teknisi membuat WO manual, atau otomatis dari maintenance request yang disetujui.", dataUpdate: "WO baru tersimpan dengan nomor unik" },
-  { icon: Users, role: "Manager", title: "Assign Teknisi", desc: "Sistem merekomendasikan teknisi berdasar skill & ketersediaan; manager menetapkan penugasan.", notif: "Teknisi menerima notifikasi in-app & push" },
-  { icon: CheckCircle2, role: "Technician", title: "Terima & Mulai", desc: "Teknisi menerima assignment, menekan Start — timer pelacakan waktu dimulai.", dataUpdate: "Status → In Progress" },
-  { icon: ClipboardList, role: "Technician", title: "Checklist & Dokumentasi", desc: "Teknisi menyelesaikan checklist, menambah foto before/during/after, catatan lapangan.", dataUpdate: "Checklist & foto tersimpan di WO" },
-  { icon: Boxes, role: "Technician", title: "Gunakan Spare Part", desc: "Part yang dipakai dicatat pada WO — stok gudang otomatis berkurang secara real-time.", dataUpdate: "Stok inventory ter-deduksi otomatis" },
-  { icon: Wrench, role: "Technician", title: "Selesaikan & Tanda Tangan", desc: "Teknisi mengisi ringkasan penyelesaian dan menangkap tanda tangan digital.", notif: "Manager menerima notifikasi 'Menunggu Approval'" },
-  { icon: Shield, role: "Manager", title: "Review & Approve", desc: "Manager memeriksa hasil pekerjaan, kualitas, dan biaya sebelum menutup WO.", dataUpdate: "Status → Completed / Closed" },
-  { icon: Bell, role: "System", title: "Notifikasi & Penutupan", desc: "Semua pihak terkait (operator, admin) menerima notifikasi penutupan WO.", notif: "Riwayat maintenance & performa teknisi terupdate" },
+  { icon: ClipboardList, role: "Manager", title: "Buat atau Terima Work Order", desc: "Work Order dibuat langsung oleh Admin/Manager atau berasal dari Maintenance Request yang disetujui.", dataUpdate: "WO tersimpan dengan nomor dan status Menunggu Persetujuan" },
+  { icon: Shield, role: "Manager", title: "Review & Setujui", desc: "Manager memeriksa asset, lokasi, masalah, prioritas, jadwal, dan kebutuhan pekerjaan sebelum menyetujui WO.", dataUpdate: "Status → Disetujui / Siap Ditugaskan" },
+  { icon: Users, role: "System", title: "Tugaskan Teknisi Otomatis", desc: "Sistem memilih teknisi aktif berdasarkan site, keahlian, dan beban kerja. Manager tetap dapat mengganti assignment secara manual.", notif: "Teknisi menerima notifikasi assignment" },
+  { icon: CheckCircle2, role: "Technician", title: "Buka & Mulai Pekerjaan", desc: "Teknisi melihat pekerjaan di Work Order Saya, membuka detail asset, lalu menekan Mulai.", dataUpdate: "Status → Sedang Dikerjakan dan waktu mulai dicatat" },
+  { icon: Wrench, role: "Technician", title: "Kerjakan & Catat Progres", desc: "Teknisi mengerjakan pekerjaan, memperbarui progres, mencatat waktu dan spare part yang digunakan, serta dapat menunda pekerjaan bila diperlukan.", dataUpdate: "Progress, labor, catatan, dan pemakaian part tersimpan" },
+  { icon: Boxes, role: "Technician", title: "Dokumentasikan Hasil", desc: "Teknisi mengambil foto sebelum dan sesudah pekerjaan, mengisi catatan penyelesaian, lalu menandatangani hasil pekerjaan.", dataUpdate: "Foto, catatan, dan tanda tangan tersimpan di WO" },
+  { icon: Shield, role: "Manager", title: "Verifikasi & Tutup", desc: "Manager memeriksa hasil, dokumentasi, durasi, dan biaya. Jika sesuai, Manager memverifikasi dan menutup WO.", dataUpdate: "Status → Terverifikasi → Ditutup" },
+  { icon: Bell, role: "System", title: "Perbarui Histori & Notifikasi", desc: "Sistem mencatat audit trail, memperbarui histori asset, mengirim notifikasi, dan memperbarui metrik maintenance.", notif: "Operator dan pihak terkait menerima informasi penyelesaian" },
 ];
 
 const REQUEST_FLOW = [
-  { icon: ClipboardList, role: "Operator", title: "Submit Request", desc: "Operator melaporkan masalah: pilih equipment, kategori isu, prioritas, foto, lokasi.", dataUpdate: "Request tersimpan status Submitted" },
-  { icon: Bell, role: "Manager", title: "Notifikasi Manager", desc: "Manager/Admin menerima notifikasi real-time atas request baru.", notif: "Push + in-app notification" },
-  { icon: Shield, role: "Manager", title: "Review Detail", desc: "Manager meninjau deskripsi, foto, riwayat asset terkait sebelum memutuskan.", dataUpdate: "Status → Under Review" },
-  { icon: CheckCircle2, role: "Manager", title: "Approve → Buat WO", desc: "Jika disetujui, sistem otomatis membuat Work Order bernomor (WO-YYYY-MM-XXX).", dataUpdate: "WO baru terhubung ke request" },
-  { icon: Users, role: "Manager", title: "Assign Teknisi", desc: "Manager menugaskan teknisi yang sesuai skill untuk mengeksekusi WO tersebut.", notif: "Teknisi menerima notifikasi assignment" },
-  { icon: Wrench, role: "Technician", title: "Eksekusi Work Order", desc: "Mengikuti Flow Work Order A: mulai, checklist, part, selesai, approval.", dataUpdate: "Status request ikut ter-update otomatis" },
-  { icon: Bell, role: "Operator", title: "Notifikasi Selesai", desc: "Operator menerima notifikasi ketika WO selesai; request otomatis Closed.", notif: "Operator dapat melihat ringkasan penyelesaian" },
+  { icon: ClipboardList, role: "Operator", title: "Ajukan Permintaan", desc: "Operator memilih peralatan yang menjadi tanggung jawabnya, menjelaskan masalah, dan menentukan tingkat urgensi.", dataUpdate: "Request tersimpan dengan status Menunggu Persetujuan" },
+  { icon: Bell, role: "Manager", title: "Terima & Review", desc: "Manager menerima notifikasi lalu memeriksa masalah, asset, lokasi, prioritas, dan riwayat pekerjaan.", notif: "Request baru tampil di daftar approval" },
+  { icon: CheckCircle2, role: "Manager", title: "Setujui atau Tolak", desc: "Manager menyetujui request yang valid atau menolaknya dengan alasan yang jelas.", dataUpdate: "Jika ditolak, request berhenti dan alasan tersimpan" },
+  { icon: Shield, role: "System", title: "Buat Work Order", desc: "Request yang disetujui dikonversi menjadi Work Order dengan nomor unik dan asset yang sama.", dataUpdate: "WO terhubung ke request awal" },
+  { icon: Users, role: "System", title: "Assignment Teknisi", desc: "Sistem memilih teknisi aktif berdasarkan site dan beban kerja; Manager dapat melakukan penyesuaian manual.", notif: "Teknisi menerima notifikasi assignment" },
+  { icon: Wrench, role: "Technician", title: "Kerjakan Pekerjaan", desc: "Teknisi membuka Work Order Saya, memulai pekerjaan, memperbarui progres, dan mengirim hasil dengan foto before/after.", dataUpdate: "Status WO dan request diperbarui" },
+  { icon: Bell, role: "Operator", title: "Terima Hasil", desc: "Setelah Manager memverifikasi dan menutup WO, Operator dapat melihat status dan ringkasan hasil pekerjaan.", notif: "Notifikasi penyelesaian dikirim ke pihak terkait" },
 ];
 
 const PROCUREMENT_FLOW = [
@@ -201,15 +201,15 @@ const ROLES = ["Super Admin", "Company Admin", "Manager", "Technician", "Operato
 const PERMISSION_ROWS = [
   { feature: "Manage Clients & Subscription Plans", perms: { "Super Admin": "CRUD", "Company Admin": "-", "Manager": "-", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
   { feature: "Company Settings & Branding", perms: { "Super Admin": "R", "Company Admin": "CRUD", "Manager": "R", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
-  { feature: "User Management", perms: { "Super Admin": "CRUD", "Company Admin": "CRUD", "Manager": "R", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
-  { feature: "Assets", perms: { "Super Admin": "R", "Company Admin": "CRUD", "Manager": "CRU", "Technician": "R", "Operator": "R", "Vendor": "-", "Warehouse": "-" } },
+  { feature: "User Management", perms: { "Super Admin": "CRUD", "Company Admin": "CRUD", "Manager": "-", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
+  { feature: "Assets", perms: { "Super Admin": "R", "Company Admin": "CRUD", "Manager": "R", "Technician": "R (site/assigned)", "Operator": "R (assigned)", "Vendor": "-", "Warehouse": "-" } },
   { feature: "Work Orders", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "CRUD", "Technician": "RU (assigned)", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
   { feature: "Maintenance Requests", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "Approve", "Technician": "-", "Operator": "Create/R", "Vendor": "-", "Warehouse": "-" } },
-  { feature: "Inventory & Warehouse", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "RU", "Technician": "R (deduct)", "Operator": "-", "Vendor": "-", "Warehouse": "CRUD" } },
+  { feature: "Inventory & Warehouse", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "RU", "Technician": "R (use/deduct)", "Operator": "-", "Vendor": "-", "Warehouse": "CRUD" } },
   { feature: "Procurement (Vendor & PO)", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "CRU", "Technician": "-", "Operator": "-", "Vendor": "RU (own)", "Warehouse": "R" } },
   { feature: "Technicians & Certifications", perms: { "Super Admin": "-", "Company Admin": "CRUD", "Manager": "RU", "Technician": "R (own)", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
   { feature: "Analytics & Reports", perms: { "Super Admin": "System-wide", "Company Admin": "R", "Manager": "R", "Technician": "R (own)", "Operator": "-", "Vendor": "-", "Warehouse": "R" } },
-  { feature: "Billing & Subscription", perms: { "Super Admin": "CRUD", "Company Admin": "R/Upgrade", "Manager": "-", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
+  { feature: "Billing & Subscription", perms: { "Super Admin": "CRUD", "Company Admin": "R/Upgrade", "Manager": "- (akses ditolak)", "Technician": "-", "Operator": "-", "Vendor": "-", "Warehouse": "-" } },
 ];
 
 const DATA_MODULES = [
@@ -223,11 +223,11 @@ const DATA_MODULES = [
 ];
 
 const FAQ = [
-  { q: "Bagaimana sistem menentukan teknisi yang di-assign ke work order?", a: "Sistem merekomendasikan teknisi berdasarkan skill matrix, sertifikasi yang relevan, dan ketersediaan (workload saat ini), lalu manager memilih dari rekomendasi tersebut atau memilih manual." },
+  { q: "Bagaimana sistem menentukan teknisi yang ditugaskan ke Work Order?", a: "Setelah Manager menyetujui Work Order, sistem memilih teknisi aktif berdasarkan site asset, specialty/keahlian, dan jumlah pekerjaan aktif. Jika tidak ada kandidat yang cocok, Work Order tetap Siap Ditugaskan dan Manager dapat memilih teknisi secara manual." },
   { q: "Apa yang terjadi jika request maintenance ditolak?", a: "Request berubah status menjadi Rejected dengan alasan yang diisi manager, operator menerima notifikasi, dan tidak ada Work Order yang dibuat." },
-  { q: "Bagaimana stok inventory berkurang otomatis?", a: "Saat teknisi menambahkan spare part yang digunakan pada tab 'Parts' di Work Order, sistem langsung mendeduksi stok di warehouse terkait secara real-time." },
+  { q: "Bagaimana stok inventory berkurang otomatis?", a: "Saat teknisi mencatat spare part yang digunakan pada Work Order, sistem mengurangi stok gudang dan menyimpan pergerakan stok untuk audit. Jika stok tidak mencukupi, teknisi atau Manager perlu membuat permintaan pengadaan." },
   { q: "Apa perbedaan Starter, Professional, dan Enterprise?", a: "Starter dibatasi 10 asset/5 user/1 lokasi, Professional 100 asset/25 user/5 lokasi dengan fitur lanjutan, Enterprise unlimited dengan semua fitur termasuk AI insight penuh." },
-  { q: "Siapa yang bisa melihat data perusahaan lain?", a: "Hanya Super Admin Aitoma yang memiliki visibilitas lintas-perusahaan (biasanya read-only untuk analitik). Setiap Company Admin/Manager/Technician/Operator hanya melihat data perusahaannya sendiri." },
+  { q: "Siapa yang bisa melihat data perusahaan lain?", a: "Hanya Super Admin Aitoma yang memiliki visibilitas lintas perusahaan. Company Admin, Manager, Technician, Operator, Vendor, dan Warehouse hanya melihat data tenant/perusahaan yang menjadi tempat mereka terdaftar, dengan pembatasan site dan assignment sesuai role." },
   { q: "Bagaimana Purchase Order terhubung ke Work Order?", a: "PO dapat dibuat langsung dari kebutuhan part pada Work Order tertentu, sehingga histori pembelian dan biaya otomatis tertaut ke WO dan asset terkait." },
 ];
 
@@ -401,8 +401,8 @@ export default function SystemGuide() {
                     participants={["Manager", "Technician", "System", "Operator"]}
                     outcome="Pekerjaan terdokumentasi lengkap (waktu, biaya, part, foto) dan asset serta inventory ter-update otomatis."
                     example="Mesin CNC menunjukkan getaran tidak normal → manager buat WO Critical → teknisi Budi ditugaskan → mengganti bearing → part otomatis dikurangi dari stok → manager approve → WO ditutup."
-                    tips={["Selalu lengkapi checklist sebelum menutup WO", "Dokumentasikan foto before/after untuk audit", "Gunakan SLA timer untuk prioritas Critical/High"]}
-                    issues={["Part tidak tersedia saat WO berjalan — cek stok sebelum assign", "Lupa update status menyebabkan SLA breach"]}
+                    tips={["Pastikan foto sebelum dan sesudah pekerjaan tersedia", "Isi catatan hasil dengan kondisi asset dan tindakan yang dilakukan", "Manager harus memverifikasi hasil sebelum WO ditutup"]}
+                    issues={["Part tidak tersedia saat WO berjalan — cek stok sebelum assign", "Lupa update status menyebabkan SLA breach", "Assignment gagal jika teknisi tidak aktif atau tidak memiliki site yang sesuai"]}
                   />
                 </div>
               )}
@@ -528,3 +528,4 @@ export default function SystemGuide() {
     </div>
   );
 }
+

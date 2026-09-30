@@ -20,6 +20,9 @@ use Illuminate\Validation\Rule;
 
 class PlatformController extends Controller
 {
+    /** Subscriptions considered "current" for display, newest first. */
+    private const CURRENT_SUBSCRIPTION_STATUSES = ['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT'];
+
     public function __construct(
         private readonly AuditService $audit,
         private readonly TenantProvisioningService $provisioning,
@@ -33,7 +36,15 @@ class PlatformController extends Controller
             $query->where(fn ($q) => $q->where('name', 'ilike', $search)->orWhere('code', 'ilike', $search));
         }
 
-        return ApiData::paginated($query->orderBy('name')->paginate($request->integer('per_page', 20)));
+        $paginator = $query->orderBy('name')->paginate($request->integer('per_page', 20));
+        $subscriptions = $this->currentSubscriptionsByTenant($paginator->getCollection()->pluck('id'));
+        $paginator = $paginator->through(function (Tenant $tenant) use ($subscriptions) {
+            $tenant->subscription = $subscriptions->get($tenant->id);
+
+            return $tenant;
+        });
+
+        return ApiData::paginated($paginator);
     }
 
     public function users(Request $request): mixed
@@ -70,6 +81,7 @@ class PlatformController extends Controller
     public function tenant(Tenant $tenant): mixed
     {
         $tenant->load('domains');
+        $tenant->subscription = $this->currentSubscriptionsByTenant(collect([$tenant->id]))->get($tenant->id);
         $usage = ['users' => null, 'assets' => null, 'sites' => null];
         if ($tenant->database_status === 'READY') {
             $usage = $tenant->run(fn () => [
@@ -134,6 +146,7 @@ class PlatformController extends Controller
             context: ['ip' => $request->ip(), 'user_agent' => $request->userAgent()],
         ), synchronous: true);
         $tenant = Tenant::query()->findOrFail($attempt->tenant_id);
+        \App\Support\CloudflareDns::registerTenant($data['domain']);
         $this->audit->platform($request, 'tenant.created', 'TENANT', $tenant->id, null, $tenant->toArray(), $tenant->id);
 
         return ApiData::item($tenant->fresh()->load('domains'), 201);
@@ -164,5 +177,46 @@ class PlatformController extends Controller
         $this->audit->platform($request, 'tenant.provisioning_retried', 'TENANT', $tenant->id, null, ['database_status' => 'READY'], $tenant->id);
 
         return ApiData::item($tenant->fresh());
+    }
+
+    /** @return \Illuminate\Support\Collection<string,array> keyed by tenant_id, one current subscription each */
+    private function currentSubscriptionsByTenant(\Illuminate\Support\Collection $tenantIds): \Illuminate\Support\Collection
+    {
+        if ($tenantIds->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table('subscriptions')
+            ->join('plans', 'plans.id', '=', 'subscriptions.plan_id')
+            ->whereIn('subscriptions.tenant_id', $tenantIds)
+            ->whereIn('subscriptions.status', self::CURRENT_SUBSCRIPTION_STATUSES)
+            ->orderByDesc('subscriptions.created_at')
+            ->get([
+                'subscriptions.tenant_id',
+                'subscriptions.status as subscription_status',
+                'subscriptions.billing_period',
+                'subscriptions.price_snapshot',
+                'subscriptions.currency_code',
+                'subscriptions.current_period_end',
+                'subscriptions.trial_ends_at',
+                'subscriptions.auto_renew',
+                'plans.id as plan_id',
+                'plans.name as plan_name',
+                'plans.key as plan_key',
+            ])
+            ->groupBy('tenant_id')
+            ->map(fn ($rows) => $rows->first())
+            ->map(fn ($row) => [
+                'plan_id' => $row->plan_id,
+                'plan_name' => $row->plan_name,
+                'plan_key' => $row->plan_key,
+                'status' => $row->subscription_status,
+                'billing_period' => $row->billing_period,
+                'price' => $row->price_snapshot,
+                'currency_code' => $row->currency_code,
+                'current_period_end' => $row->current_period_end,
+                'trial_ends_at' => $row->trial_ends_at,
+                'auto_renew' => (bool) $row->auto_renew,
+            ]);
     }
 }

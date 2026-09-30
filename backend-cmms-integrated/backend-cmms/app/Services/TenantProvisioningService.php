@@ -82,6 +82,7 @@ class TenantProvisioningService
                 'status' => 'TRIAL',
                 'billing_period' => $data->billingPeriod,
                 'price_snapshot' => $data->billingPeriod === 'YEARLY' ? $plan->annual_price : $plan->monthly_price,
+                ...app(\App\Services\PlanSnapshotService::class)->forPlan($central, $plan),
                 'currency_code' => $plan->currency_code,
                 'starts_at' => now(),
                 'trial_ends_at' => $trialEndsAt,

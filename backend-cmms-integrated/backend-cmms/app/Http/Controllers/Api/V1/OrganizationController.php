@@ -176,19 +176,19 @@ class OrganizationController extends Controller
             'email' => ['required', 'email', 'max:320'], 'full_name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:32'], 'employee_code' => ['nullable', 'string', 'max:80', Rule::unique('tenant_users', 'employee_code')],
             'role_key' => ['required', Rule::in(['COMPANY_ADMIN', 'MANAGER', 'SUPERVISOR', 'TECHNICIAN', 'OPERATOR', 'VIEWER'])],
-            'primary_site_id' => ['nullable', 'ulid', Rule::exists('sites', 'id')], 'temporary_password' => ['nullable', 'string', 'min:8'],
+            'primary_site_id' => ['nullable', 'ulid', Rule::exists('sites', 'id')], 'password' => ['nullable', 'string', 'min:8'],
         ]);
         $this->userPolicy->authorizeCreation($request->attributes->get('tenant_user'), $data);
         $central = config('tenancy.database.central_connection');
         $email = mb_strtolower($data['email']);
         $centralUser = User::query()->where('email', $email)->first();
-        if (! $centralUser && empty($data['temporary_password'])) {
-            throw new ApiException('TEMPORARY_PASSWORD_REQUIRED', 'A temporary password is required for a new global user.', 422);
+        if (! $centralUser && empty($data['password'])) {
+            throw new ApiException('TEMPORARY_PASSWORD_REQUIRED', 'A password is required for a new global user.', 422);
         }
         if (! $centralUser) {
             $centralUser = User::create([
-                'email' => $email, 'password_hash' => Hash::make($data['temporary_password']), 'full_name' => $data['full_name'],
-                'phone' => $data['phone'] ?? null, 'status' => 'ACTIVE', 'must_change_password' => true,
+                'email' => $email, 'password_hash' => Hash::make($data['password']), 'full_name' => $data['full_name'],
+                'phone' => $data['phone'] ?? null, 'status' => 'ACTIVE', 'must_change_password' => false,
             ]);
         }
         if (DB::connection($central)->table('tenant_memberships')->where('tenant_id', tenant('id'))->where('user_id', $centralUser->id)->exists()) {

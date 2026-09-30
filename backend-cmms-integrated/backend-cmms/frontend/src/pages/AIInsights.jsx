@@ -47,11 +47,11 @@ export default function AIInsights() {
         <h3 className="mb-4 font-display text-base font-bold text-foreground">Top 10 Asset Paling Bermasalah (90 hari terakhir)</h3>
         <Table
           columns={[
-            { key: "asset_name", label: "Asset" },
-            { key: "criticality", label: "Kritikalitas" },
-            { key: "work_order_count", label: "Jumlah WO" },
-            { key: "avg_repair_hours", label: "Rata-rata Perbaikan (jam)" },
-            { key: "overdue_count", label: "Overdue" },
+            { key: "asset_name", header: "Asset" },
+            { key: "criticality", header: "Kritikalitas" },
+            { key: "work_order_count", header: "Jumlah WO" },
+            { key: "avg_repair_hours", header: "Rata-rata Perbaikan (jam)" },
+            { key: "overdue_count", header: "Overdue" },
           ]}
           rows={data.top_problem_assets.map((a) => ({
             id: a.asset_id,

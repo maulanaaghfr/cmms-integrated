@@ -1,0 +1,68 @@
+services:
+  app:
+    build: .
+    container_name: cmms-app
+    volumes:
+      - ./storage:/var/www/storage
+      - ./.env:/var/www/.env
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    networks:
+      - cmms-net
+
+  queue-worker:
+    build: .
+    container_name: cmms-queue-worker
+    command: php artisan queue:work --sleep=3 --tries=3
+    volumes:
+      - ./storage:/var/www/storage
+      - ./.env:/var/www/.env
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    networks:
+      - cmms-net
+
+
+  web:
+    image: nginx:alpine
+    container_name: cmms-web
+    ports:
+      - "8081:80"
+    volumes:
+      - ./public:/var/www/public
+      - ./docker/nginx-backend.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - app
+    networks:
+      - cmms-net
+
+  db:
+    image: postgres:16
+    container_name: cmms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aitoma_cmms_central
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: cmms_secret_pass
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - cmms-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: cmms-redis
+    networks:
+      - cmms-net
+
+volumes:
+  db_data:
+
+networks:
+  cmms-net:

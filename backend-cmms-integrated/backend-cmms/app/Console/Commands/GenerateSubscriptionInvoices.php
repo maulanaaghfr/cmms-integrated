@@ -18,6 +18,7 @@ class GenerateSubscriptionInvoices extends Command
     public function handle(): int
     {
         $tenantIds = array_filter($this->option('tenant'));
+        $this->components->info('Rolled over '.$this->rollOverPaidPeriods($tenantIds).' subscription(s).');
         $query = DB::table('subscriptions')->join('tenants', 'tenants.id', '=', 'subscriptions.tenant_id')
             ->whereIn('subscriptions.status', ['TRIAL', 'ACTIVE', 'GRACE'])
             ->select('subscriptions.*', 'tenants.name as tenant_name', 'tenants.email as tenant_email');
@@ -55,5 +56,41 @@ class GenerateSubscriptionInvoices extends Command
         $this->components->info("Generated {$created} invoice(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Moves paid (or free), elapsed ACTIVE subscriptions into their next billing period and
+     * re-reads price, limits and features from the plan. This is the only moment plan edits
+     * reach a running subscriber.
+     */
+    private function rollOverPaidPeriods(array $tenantIds): int
+    {
+        $snapshots = app(\App\Services\PlanSnapshotService::class);
+        $query = DB::table('subscriptions')->where('status', 'ACTIVE')->where('auto_renew', true)
+            ->whereNotNull('current_period_end')->where('current_period_end', '<=', now());
+        if ($tenantIds !== []) {
+            $query->whereIn('tenant_id', $tenantIds);
+        }
+        $rolled = 0;
+        foreach ($query->get() as $subscription) {
+            $plan = DB::table('plans')->where('id', $subscription->plan_id)->first();
+            $paid = (float) $subscription->price_snapshot <= 0
+                || DB::table('invoices')->where('subscription_id', $subscription->id)
+                    ->where('billing_period_end', $subscription->current_period_end)->where('status', 'PAID')->exists();
+            if (! $plan || ! $paid) {
+                continue;
+            }
+            $start = \Illuminate\Support\Carbon::parse($subscription->current_period_end);
+            $end = $subscription->billing_period === 'YEARLY' ? $start->copy()->addYear() : $start->copy()->addMonth();
+            DB::table('subscriptions')->where('id', $subscription->id)->update([
+                'current_period_start' => $start, 'current_period_end' => $end,
+                'price_snapshot' => $snapshots->priceFor($plan, $subscription->billing_period),
+                ...$snapshots->forPlan(DB::connection(), $plan),
+                'updated_at' => now(),
+            ]);
+            $rolled++;
+        }
+
+        return $rolled;
     }
 }

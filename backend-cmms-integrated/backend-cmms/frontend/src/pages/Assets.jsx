@@ -11,7 +11,7 @@ import {
   listAssets, getAsset, createAsset, updateAsset, archiveAsset,
   listAssetCategories, listSites, listLocations,
 } from "../lib/assets";
-import { AssetQr, printAssetQrLabel } from "../components/CodeTools";
+import { AssetQr, downloadAssetQr } from "../components/CodeTools";
 
 /* Real DB enums — see database/migrations/tenant/..._create_organization_and_asset_tables.php */
 const STATUSES = ["OPERATIONAL", "UNDER_MAINTENANCE", "DOWN", "STANDBY", "OUT_OF_SERVICE"];
@@ -110,9 +110,44 @@ export default function Assets() {
 
   const locationsForSite = (siteId) => locations.filter((l) => l.site_id === siteId);
 
+  const printQrLabel = () => {
+    const qrImage = document.querySelector('img[alt="QR Asset"]');
+    if (!qrImage?.src) {
+      toast.error("QR belum selesai dibuat. Tunggu sebentar lalu coba lagi.");
+      return;
+    }
+
+    const popup = window.open("", "_blank", "width=480,height=600");
+    if (!popup) {
+      toast.error("Popup diblokir browser. Izinkan popup untuk localhost lalu coba lagi.");
+      return;
+    }
+
+    const title = String(view?.name || "Asset QR").replaceAll("<", "&lt;");
+    const code = String(view?.code || "").replaceAll("<", "&lt;");
+    popup.document.write(`<html><head><title>${title}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:24px}.label{border:1px solid #111;padding:18px;display:inline-block;min-width:260px}img{display:block;width:190px;height:190px;margin:12px auto}h2{font-size:18px;margin:0 0 8px}p{margin:4px 0;font-size:12px}</style></head><body><div class="label"><h2>${title}</h2><p>${code}</p><img src="${qrImage.src}" alt="QR Asset"/><p>Scan QR untuk membuka detail asset</p></div><script>window.onload=()=>window.print();</script></body></html>`);
+    popup.document.close();
+  };
+
   const save = async () => {
     if (!form.name.trim() || !form.code.trim() || !form.site_id || !form.asset_category_id) {
       toast.error("Kode, nama, site, dan kategori wajib diisi.");
+      return;
+    }
+    const normalizedCode = form.code.trim().toLowerCase();
+    const duplicateCode = assets.find((asset) =>
+      asset.id !== form.id && String(asset.code || "").trim().toLowerCase() === normalizedCode
+    );
+    if (duplicateCode) {
+      toast.error(`Kode aset ${form.code.trim()} sudah digunakan oleh ${duplicateCode.name}. Gunakan kode lain.`);
+      return;
+    }
+    const normalizedBarcode = String(form.barcode || "").trim().toLowerCase();
+    const duplicateBarcode = normalizedBarcode && assets.find((asset) =>
+      asset.id !== form.id && String(asset.barcode || "").trim().toLowerCase() === normalizedBarcode
+    );
+    if (duplicateBarcode) {
+      toast.error(`Barcode ${form.barcode.trim()} sudah digunakan oleh ${duplicateBarcode.name}.`);
       return;
     }
     setSaving(true);
@@ -143,7 +178,10 @@ export default function Assets() {
       setForm(null);
       load();
     } catch (err) {
-      toast.error(err.message || "Gagal menyimpan aset.");
+      const details = err.details && typeof err.details === "object"
+        ? Object.values(err.details).flat().filter(Boolean).join(" ")
+        : "";
+      toast.error(details || err.message || "Gagal menyimpan aset.");
     } finally {
       setSaving(false);
     }
@@ -186,6 +224,7 @@ export default function Assets() {
 
   return (
     <Reveal>
+      <PageHeader title="Manajemen Aset" subtitle={`${assets.length} aset terdaftar`} action={canEdit && <Button onClick={openNew} disabled={sites.length === 0}><Plus className="h-4 w-4" /> Tambah Aset</Button>} />
       {sites.length === 0 && !loading && (
         <div className="mb-5 flex gap-2 rounded-xl border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 p-3 text-sm text-foreground">
           <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
@@ -194,14 +233,14 @@ export default function Assets() {
       )}
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Boxes} label="Total assets" value={assets.length} tone="primary" />
-        <StatCard icon={ShieldCheck} label="Operational" value={assets.filter((a) => a.status === "OPERATIONAL").length} tone="success" />
-        <StatCard icon={AlertTriangle} label="Under maintenance" value={stats.maint} tone="warning" />
-        <StatCard icon={AlertTriangle} label="Out of service" value={stats.down} tone="accent" />
+        <StatCard icon={Boxes} label="Total Aset" value={assets.length} tone="primary" />
+        <StatCard icon={ShieldCheck} label="Aset Aktif" value={assets.filter((a) => a.status === "OPERATIONAL").length} tone="success" />
+        <StatCard icon={AlertTriangle} label="Perlu Perhatian" value={stats.maint} tone="warning" />
+        <StatCard icon={AlertTriangle} label="Kritis" value={stats.down} tone="accent" />
       </div>
 
       <Card>
-        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-display text-base font-bold">Assets</h2><p className="text-xs text-muted-foreground">{assets.length} assets</p></div>{canEdit && <Button className="px-3 py-2 text-xs" onClick={openNew} disabled={sites.length === 0}><Plus className="h-3.5 w-3.5" /> Add asset</Button>}</div>
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-display text-base font-bold">Manajemen Aset</h2><p className="text-xs text-muted-foreground">{assets.length} aset terdaftar</p></div></div>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SearchInput value={q} onChange={setQ} placeholder="Cari nama, kode, serial, barcode..." />
           <div className="flex gap-2">
@@ -281,8 +320,8 @@ export default function Assets() {
               <div><div className="text-xs text-muted-foreground">Tgl Instalasi</div><div className="font-medium text-foreground">{view.installation_date || "-"}</div></div>
             </div>
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4 sm:flex-row sm:items-start">
-              <AssetQr value={`${window.location.origin}/assets/${view.id}`} size={150} />
-              <div className="flex-1 text-center sm:text-left"><p className="text-sm font-semibold">QR Asset/Mesin</p><p className="mt-1 text-xs text-muted-foreground">Scan untuk membuka detail asset ini.</p><div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start"><Button onClick={() => navigate(`/work-orders?asset_id=${view.id}`)}>Buat Work Order</Button><Button variant="ghost" onClick={async () => { try { await printAssetQrLabel({ value: `${window.location.origin}/assets/${view.id}`, title: view.name, code: view.code }); } catch (err) { toast.error(err.message || "Gagal membuat label QR."); } }}>Print QR 1:1</Button></div></div>
+              <AssetQr value={`${window.location.origin}/assets?asset_id=${view.id}`} size={150} />
+              <div className="flex-1 text-center sm:text-left"><p className="text-sm font-semibold">QR Asset/Mesin</p><p className="mt-1 text-xs text-muted-foreground">Scan untuk membuka detail asset ini.</p><div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start"><Button onClick={() => navigate(`/work-orders?asset_id=${view.id}`)}>Buat Work Order</Button><Button variant="ghost" onClick={printQrLabel}>Print QR</Button><Button variant="ghost" onClick={() => downloadAssetQr({ value: `${window.location.origin}/assets?asset_id=${view.id}`, code: view.code, format: "png" })}>PNG</Button><Button variant="ghost" onClick={() => downloadAssetQr({ value: `${window.location.origin}/assets?asset_id=${view.id}`, code: view.code, format: "jpg" })}>JPG</Button><Button variant="ghost" onClick={() => downloadAssetQr({ value: `${window.location.origin}/assets?asset_id=${view.id}`, code: view.code, format: "svg" })}>SVG</Button></div></div>
             </div>
             {view.description && (
               <div><div className="mb-1 text-xs text-muted-foreground">Deskripsi</div><p className="text-sm text-foreground">{view.description}</p></div>

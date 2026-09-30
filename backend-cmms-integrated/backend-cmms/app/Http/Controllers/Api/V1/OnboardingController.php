@@ -184,9 +184,48 @@ class OnboardingController extends Controller
         });
         $this->audit->platform($request, 'onboarding.email_verified', 'ONBOARDING', $onboarding->id, null, ['status' => $onboarding->status]);
 
+        // Auto-provision right after verification so the tenant exists
+        // regardless of which device/browser the user logs in from next.
+        try {
+            $row = $onboarding->fresh();
+            if ($row->status === 'READY_TO_PROVISION' && ! $row->provision_idempotency_key) {
+                $autoKey = 'auto-verify:'.$row->id;
+                $payloadHash = hash('sha256', $row->id.'|START_TRIAL');
+                $plan = $this->availablePlan($row->selected_plan_id);
+                $this->ensureBillingPeriod($plan, $row->billing_period);
+                $row->forceFill([
+                    'provision_idempotency_key' => $autoKey,
+                    'provision_payload_hash' => $payloadHash,
+                ])->save();
+                $domain = $row->requested_slug.config('onboarding.tenant_domain_suffix');
+                $this->registerTenantDns($domain);
+                $this->provisioning->start(new ProvisionTenantData(
+                    requestId: $autoKey,
+                    source: 'SELF_SERVICE',
+                    actorUserId: $row->user_id,
+                    ownerUserId: $row->user_id,
+                    companyName: $row->company_name,
+                    companyEmail: $row->company_email,
+                    companyPhone: $row->company_phone,
+                    industry: $row->industry,
+                    timezone: $row->timezone,
+                    code: $this->tenantCode($row->company_name, $row->id),
+                    slug: $row->requested_slug,
+                    domain: $domain,
+                    planId: $row->selected_plan_id,
+                    billingPeriod: $row->billing_period,
+                    trialDays: (int) config('onboarding.trial_days'),
+                    onboardingId: $row->id,
+                    context: ['ip' => $request->ip(), 'user_agent' => $request->userAgent(), 'auto' => true],
+                ));
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Auto-provision after email verify failed: '.$e->getMessage());
+        }
+
         return ApiData::item([
             'onboarding_id' => $onboarding->id,
-            'status' => $onboarding->status,
+            'status' => $onboarding->fresh()->status,
             'next_step' => 'LOGIN_AND_START_TRIAL',
         ]);
     }
@@ -261,7 +300,8 @@ class OnboardingController extends Controller
             'provision_idempotency_key' => $key,
             'provision_payload_hash' => $payloadHash,
         ])->save();
-        $domain = $row->requested_slug.'.'.config('onboarding.tenant_domain_suffix');
+        $domain = $row->requested_slug.config('onboarding.tenant_domain_suffix');
+        $this->registerTenantDns($domain);
         $attempt = $this->provisioning->start(new ProvisionTenantData(
             requestId: 'self-service:'.$key,
             source: 'SELF_SERVICE',
@@ -363,7 +403,8 @@ class OnboardingController extends Controller
 
     private function ensureSlugAvailable(string $slug): void
     {
-        $domain = $slug.'.'.config('onboarding.tenant_domain_suffix');
+        $domain = $slug.config('onboarding.tenant_domain_suffix');
+        $this->registerTenantDns($domain);
         if (DB::table('tenants')->where('slug', $slug)->exists()
             || DB::table('domains')->where('domain', $domain)->exists()
             || OnboardingRegistration::query()->where('requested_slug', $slug)->whereNotIn('status', ['EXPIRED', 'CANCELLED'])->exists()) {
@@ -456,5 +497,29 @@ class OnboardingController extends Controller
         $base = Str::upper(Str::slug($companyName, '_'));
 
         return Str::limit($base, 48, '').'_'.Str::upper(substr($onboardingId, -8));
+    }
+
+    private function registerTenantDns(string $domain): void
+    {
+        $token = env('CLOUDFLARE_API_TOKEN');
+        $zoneId = env('CLOUDFLARE_ZONE_ID');
+        $ip = env('CLOUDFLARE_VPS_IP');
+        if (! $token || ! $zoneId || ! $ip) {
+            return;
+        }
+        try {
+            \Illuminate\Support\Facades\Http::withToken($token)->post(
+                "https://api.cloudflare.com/client/v4/zones/{$zoneId}/dns_records",
+                [
+                    'type' => 'A',
+                    'name' => $domain,
+                    'content' => $ip,
+                    'proxied' => true,
+                    'ttl' => 1,
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Cloudflare DNS auto-create failed: '.$e->getMessage());
+        }
     }
 }

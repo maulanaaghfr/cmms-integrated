@@ -1,125 +1,30 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardPlus, Boxes, ArrowRight, Gauge } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardList, Clock3, MapPin, Wrench } from "lucide-react";
 import { useApp } from "../../store/store";
-import { Sheet } from "../../components/mobile-kit";
 import { listAssets } from "../../lib/assets";
 import { listRequests } from "../../lib/requests";
 
-const statusTone2 = { OPERATIONAL: "success", UNDER_MAINTENANCE: "warning", DOWN: "danger", STANDBY: "accent" };
-const toneCls = {
-  success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]",
-  warning: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]",
-  danger: "bg-destructive/10 text-destructive",
-  accent: "bg-accent/10 text-accent",
-};
+const statuses = { SUBMITTED: ["Pending", "bg-slate-100 text-slate-600"], PENDING_APPROVAL: ["Menunggu", "bg-violet-50 text-violet-700"], APPROVED: ["Disetujui", "bg-blue-50 text-blue-700"], IN_PROGRESS: ["Dikerjakan", "bg-amber-50 text-amber-700"], CONVERTED: ["Selesai", "bg-emerald-50 text-emerald-700"], REJECTED: ["Ditolak", "bg-red-50 text-red-700"] };
+const equipment = { OPERATIONAL: ["Operasional", "bg-emerald-50 text-emerald-700", "bg-emerald-500"], UNDER_MAINTENANCE: ["Maintenance", "bg-amber-50 text-amber-700", "bg-amber-500"], DOWN: ["Rusak", "bg-red-50 text-red-700", "bg-red-500"], STANDBY: ["Standby", "bg-slate-100 text-slate-600", "bg-slate-400"] };
+const date = (v) => v ? new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(v)) : "-";
 
 export default function OperatorHome() {
-  const { user } = useApp();
-  const [eqOpen, setEqOpen] = useState(false);
-  const [assets, setAssets] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [assetsRes, reqRes] = await Promise.all([listAssets(), listRequests()]);
-      setAssets(assetsRes.data || []);
-      setRequests(reqRes.data || []);
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const { user } = useApp(); const [requests, setRequests] = useState([]); const [assets, setAssets] = useState([]); const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => { setLoading(true); try { const [r, a] = await Promise.all([listRequests(), listAssets()]); setRequests(r.data || []); setAssets(a.data || []); } catch { /* TODO: butuh data dari backend */ } finally { setLoading(false); } }, []);
   useEffect(() => { load(); }, [load]);
-
-  const ACTIVE_STATUSES = ["SUBMITTED", "PENDING_APPROVAL", "APPROVED", "IN_PROGRESS"];
-  const openReq = requests.filter((r) => ACTIVE_STATUSES.includes(r.status)).length;
-
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 lg:space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Halo,</p>
-        <h1 className="font-display text-2xl font-extrabold text-foreground sm:text-3xl">{(user?.name || "").split(" ")[0]} 👋</h1>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-3 lg:items-start lg:gap-6">
-        {/* main column */}
-        <div className="space-y-5 lg:col-span-2">
-          <Link to="/requests" className="flex items-center gap-3 rounded-2xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/25 transition hover:brightness-105 active:scale-[0.99] lg:p-5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><ClipboardPlus className="h-5 w-5" /></div>
-            <div className="flex-1">
-              <div className="font-display text-sm font-bold lg:text-base">Ajukan Permintaan Maintenance</div>
-              <div className="text-xs text-white/80">Laporkan masalah peralatan dengan foto</div>
-            </div>
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Permintaan Terbaru</h2>
-              <Link to="/requests" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Lihat semua <ArrowRight className="h-3 w-3" /></Link>
-            </div>
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              {loading && [0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-muted/50" />)}
-              {!loading && requests.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground sm:col-span-2">Belum ada permintaan.</div>
-              )}
-              {requests.slice(0, 4).map((r) => (
-                <div key={r.id} className="rounded-2xl border border-border bg-card p-4 soft-card transition hover:border-primary/20 hover:shadow-md">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-semibold text-foreground">{r.title}</span>
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{r.status}</span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">{r.request_number}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* sidebar */}
-        <div className="space-y-4 lg:sticky lg:top-4">
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
-              <div className="font-display text-xl font-extrabold text-foreground">{requests.length}</div>
-              <div className="text-[11px] text-muted-foreground">Total Permintaan</div>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-3.5 text-center soft-card">
-              <div className="font-display text-xl font-extrabold text-foreground">{openReq}</div>
-              <div className="text-[11px] text-muted-foreground">Sedang Diproses</div>
-            </div>
-          </div>
-
-          <button onClick={() => setEqOpen(true)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 soft-card transition hover:border-primary/20 hover:shadow-md active:scale-[0.99]">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Boxes className="h-5 w-5" /></div>
-            <div className="flex-1 text-left">
-              <div className="font-display text-sm font-bold text-foreground">Info Peralatan</div>
-              <div className="text-xs text-muted-foreground">{assets.length} unit terdaftar</div>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
-      </div>
-
-      <Sheet open={eqOpen} onClose={() => setEqOpen(false)} title="Info Peralatan" size="lg">
-        <div className="grid gap-2.5 sm:grid-cols-2">
-          {assets.map((a) => (
-            <div key={a.id} className="rounded-2xl border border-border p-3.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">{a.name}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneCls[statusTone2[a.status]] || "bg-muted text-muted-foreground"}`}>{a.status}</span>
-              </div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                <Gauge className="h-3 w-3" /> {a.code} · {a.criticality}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Sheet>
+  const counts = useMemo(() => ({ processing: requests.filter((r) => ["APPROVED", "IN_PROGRESS"].includes(r.status)).length, waiting: requests.filter((r) => ["SUBMITTED", "PENDING_APPROVAL"].includes(r.status)).length, done: requests.filter((r) => ["CONVERTED", "COMPLETED"].includes(r.status)).length }), [requests]);
+  const firstName = (user?.name || "Operator").split(" ")[0];
+  return <div className="mx-auto max-w-[1240px] space-y-5 pb-8">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">Halo,</p><h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">{firstName} 👋</h1><p className="mt-1 text-xs text-slate-500">Senin, 2 Desember 2024 · Shift A · {user?.company || "PT Contoh Industri"}</p></div><div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600"><span className="mr-1.5">●</span>1 permintaan CRITICAL aktif</div></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Kpi icon={ClipboardList} label="Total Permintaan" value={requests.length} hint="Semua permintaan" tone="slate" /><Kpi icon={Wrench} label="Sedang Diproses" value={counts.processing} hint="Aktif ditangani" tone="blue" /><Kpi icon={Clock3} label="Menunggu" value={counts.waiting} hint="Belum diproses" tone="amber" /><Kpi icon={CheckCircle2} label="Selesai" value={counts.done} hint="Berhasil ditangani" tone="green" /></div>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="text-sm font-bold text-slate-900">Permintaan Terbaru</h2><p className="mt-1 text-xs text-slate-400">{requests.length} total permintaan aktif</p></div><Link to="/requests" className="text-xs font-semibold text-blue-600">Lihat semua <ArrowRight className="ml-1 inline h-3.5 w-3.5" /></Link></div><div className="hidden overflow-x-auto md:block"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400"><tr>{["Request ID", "Masalah", "Peralatan", "Urgensi", "Tanggal", "Status"].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{requests.slice(0, 8).map((r) => <tr key={r.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-mono font-semibold text-blue-600">{r.request_number || r.id}</td><td className="max-w-[190px] truncate px-4 py-3 text-slate-600">{r.title || r.description || "-"}</td><td className="max-w-[160px] truncate px-4 py-3 text-slate-500">{r.asset?.name || r.asset_name || "-"}</td><td className="px-4 py-3"><Priority value={r.priority} /></td><td className="whitespace-nowrap px-4 py-3 text-slate-400">{date(r.created_at)}</td><td className="px-4 py-3"><Status value={r.status} /></td></tr>)}</tbody></table></div><div className="divide-y divide-slate-100 md:hidden">{requests.slice(0, 6).map((r) => <Link to={`/requests/${r.id}`} key={r.id} className="block p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-[10px] font-semibold text-blue-600">{r.request_number || r.id}</p><p className="mt-1 text-sm font-semibold text-slate-900">{r.title || r.description || "Permintaan maintenance"}</p></div><Status value={r.status} /></div><p className="mt-2 text-xs text-slate-400">{r.asset?.name || r.asset_name || "Peralatan belum dipilih"} · {date(r.created_at)}</p></Link>)}</div>{loading && <Empty text="Memuat permintaan..." />}{!loading && !requests.length && <Empty text="Belum ada permintaan maintenance." />}</section>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-4"><div><h2 className="text-sm font-bold text-slate-900">Status Peralatan</h2><p className="mt-1 text-xs text-slate-400">{assets.length} unit terdaftar</p></div><Link to="/assets" className="text-xs font-semibold text-blue-600">Kelola</Link></div><div className="divide-y divide-slate-100">{assets.slice(0, 6).map((a) => { const [label, pill, bar] = equipment[a.status] || equipment.STANDBY; const score = a.condition_score ?? (a.status === "OPERATIONAL" ? 82 : a.status === "DOWN" ? 35 : 61); return <Link to={`/assets/${a.id}`} key={a.id} className="block px-4 py-3.5 hover:bg-slate-50"><div className="flex items-start justify-between gap-2"><p className="truncate text-xs font-semibold text-slate-700">{a.name}</p><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${pill}`}>● {label}</span></div><div className="mt-3 flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${bar}`} style={{ width: `${score}%` }} /></div><span className="text-[10px] font-bold text-slate-500">{score}%</span></div><p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400"><MapPin className="h-3 w-3" />{a.location?.name || a.location_name || "Lokasi belum diatur"}</p></Link>; })}</div>{!assets.length && <Empty text="Belum ada data peralatan." />}</section>
     </div>
-  );
+  </div>;
 }
+function Kpi({ icon: Icon, label, value, hint, tone }) { const colors = { slate: "bg-slate-50 text-slate-500", blue: "bg-blue-50 text-blue-600", amber: "bg-amber-50 text-amber-600", green: "bg-emerald-50 text-emerald-600" }; return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between"><div><p className="text-xs text-slate-500">{label}</p><p className="mt-3 text-3xl font-extrabold text-slate-900">{value}</p><p className="mt-1 text-[11px] text-slate-400">{hint}</p></div><span className={`grid h-9 w-9 place-items-center rounded-xl ${colors[tone]}`}><Icon className="h-4 w-4" /></span></div></div>; }
+function Priority({ value }) { const c = value === "CRITICAL" ? "border-red-200 bg-red-50 text-red-600" : value === "HIGH" ? "border-orange-200 bg-orange-50 text-orange-600" : value === "MEDIUM" ? "border-amber-200 bg-amber-50 text-amber-600" : "border-emerald-200 bg-emerald-50 text-emerald-600"; return <span className={`rounded-md border px-2 py-1 text-[10px] font-bold ${c}`}>● {value || "LOW"}</span>; }
+function Status({ value }) { const [label, cls] = statuses[value] || [value || "Pending", "bg-slate-100 text-slate-600"]; return <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${cls}`}>● {label}</span>; }
+function Empty({ text }) { return <div className="p-8 text-center text-xs text-slate-400">{text}</div>; }

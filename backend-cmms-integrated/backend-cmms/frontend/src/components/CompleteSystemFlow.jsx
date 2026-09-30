@@ -31,32 +31,20 @@ const ACTION_TONE = { create: "primary", update: "accent", approve: "success", n
 
 function RoleChip({ role, active, onClick, size = "sm" }) {
   const c = ROLE_COLORS[role] || { text: "text-muted-foreground", bg: "bg-muted", border: "border-border", dot: "bg-muted-foreground" };
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 ${size === "sm" ? "py-0.5 text-[11px]" : "py-1.5 text-xs"} font-semibold transition active:scale-[0.97] ${
-        active ? `${c.bg} ${c.text} ${c.border} ring-2 ring-offset-1 ring-primary/30` : `${c.bg} ${c.text} ${c.border} opacity-90 hover:opacity-100`
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-      {role}
-    </button>
-  );
+  const className = `inline-flex items-center gap-1.5 rounded-full border px-2.5 ${size === "sm" ? "py-0.5 text-[11px]" : "py-1.5 text-xs"} font-semibold transition ${onClick ? "active:scale-[0.97]" : ""} ${
+    active ? `${c.bg} ${c.text} ${c.border} ring-2 ring-offset-1 ring-primary/30` : `${c.bg} ${c.text} ${c.border} opacity-90`
+  }`;
+  if (onClick) return <button type="button" onClick={onClick} className={`${className} hover:opacity-100`}><span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />{role}</button>;
+  return <span className={className}><span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />{role}</span>;
 }
 
 function EntityChip({ entity, active, onClick }) {
   const Icon = ENTITY_ICONS[entity.icon] || Package;
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition active:scale-[0.97] ${
-        active ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20" : "border-border bg-card text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      <Icon className="h-3 w-3" />
-      {entity.label}
-    </button>
-  );
+  const className = `inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${onClick ? "active:scale-[0.97]" : ""} ${
+    active ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20" : "border-border bg-card text-muted-foreground"
+  }`;
+  if (onClick) return <button type="button" onClick={onClick} className={`${className} hover:text-foreground`}><Icon className="h-3 w-3" />{entity.label}</button>;
+  return <span className={className}><Icon className="h-3 w-3" />{entity.label}</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -171,7 +159,7 @@ function TimelineStep({ step, index, isLast, dimmed }) {
                   {step.entities.map((eid) => {
                     const ent = FLOW_ENTITIES.find((e) => e.id === eid);
                     if (!ent) return null;
-                    return <EntityChip key={eid} entity={ent} active={false} onClick={() => {}} />;
+                    return <EntityChip key={eid} entity={ent} active={false} />;
                   })}
                 </div>
               </div>
@@ -528,3 +516,4 @@ export default function CompleteSystemFlow() {
     </div>
   );
 }
+

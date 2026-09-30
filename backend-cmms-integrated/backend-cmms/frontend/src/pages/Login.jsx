@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import Logo from "../components/Logo";
 import { useApp, passwordStrength } from "../store/store";
 import { Input, Field, Button, Select } from "../components/kit";
-import { listPublicPlans, registerOnboarding } from "../lib/onboarding";
-import { requestPasswordReset, resetPasswordWithToken } from "../lib/auth";
+import { listPublicPlans, registerOnboarding, verifyEmail } from "../lib/onboarding";
+import { requestPasswordReset, resetPasswordWithToken, resendVerification } from "../lib/auth";
 
 const strengthBar = { danger: "bg-destructive", warning: "bg-[hsl(var(--warning))]", accent: "bg-accent", success: "bg-[hsl(var(--success))]" };
 
@@ -75,6 +75,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState(false);
 
   // signup state
   const [su, setSu] = useState({ companyName: "", adminName: "", email: "", phone: "", city: "", industry: "Manufacturing", planId: "", password: "", confirmPassword: "", agree: false });
@@ -98,6 +99,18 @@ export default function Login() {
     if (token && resetEmail) {
       setFp({ email: resetEmail, sent: true, code: token, newPassword: "", confirmPassword: "" });
       setMode("forgot");
+      return;
+    }
+    if (token) {
+      setBusy(true);
+      verifyEmail(token)
+        .then(() => {
+          toast.success("Email berhasil diverifikasi. Silakan masuk untuk melanjutkan.");
+          setMode("signin");
+          window.history.replaceState({}, "", "/");
+        })
+        .catch((error) => toast.error(error.message || "Link verifikasi tidak valid atau sudah kedaluwarsa."))
+        .finally(() => setBusy(false));
     }
   }, []);
 
@@ -107,7 +120,14 @@ export default function Login() {
     setBusy(true);
     const res = await login(email, password);
     setBusy(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      if (res.errorCode === "EMAIL_VERIFICATION_REQUIRED") {
+        setVerificationNotice(true);
+        return toast.error("Email belum diverifikasi. Periksa inbox atau kirim ulang email verifikasi.");
+      }
+      return toast.error(res.error);
+    }
+    setVerificationNotice(false);
     if (res.needsTenantSelection) return; // tenant picker renders below
     toast.success(`Selamat datang, ${res.user.name.split(" ")[0]}!`);
   };
@@ -122,7 +142,7 @@ export default function Login() {
 
   const submitSignup = async (e) => {
     e.preventDefault();
-    if (!su.companyName.trim() || !su.email.trim() || !su.password) return toast.error("Lengkapi data wajib.");
+    if (!su.companyName.trim() || !su.adminName.trim() || !su.email.trim() || !su.password) return toast.error("Lengkapi data wajib.");
     if (passwordStrength(su.password).score < 2) return toast.error("Password terlalu lemah.");
     if (su.password !== su.confirmPassword) return toast.error("Konfirmasi password tidak cocok.");
     if (!su.agree) return toast.error("Anda harus menyetujui Syarat & Ketentuan.");
@@ -226,6 +246,25 @@ export default function Login() {
                   </Button>
                 </form>
 
+                {verificationNotice && (
+                  <div className="mt-4 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 p-3 text-sm">
+                    <p className="text-[hsl(var(--warning))]">Email akun ini belum diverifikasi.</p>
+                    <button
+                      type="button"
+                      className="mt-2 font-semibold text-primary hover:underline"
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await resendVerification(email.trim());
+                          toast.success("Jika akun masih menunggu verifikasi, email baru telah dikirim.");
+                        } catch (error) { toast.error(error.message || "Gagal mengirim ulang email verifikasi."); }
+                        finally { setBusy(false); }
+                      }}
+                      disabled={busy}
+                    >Kirim ulang email verifikasi</button>
+                  </div>
+                )}
+
                 <p className="mt-4 text-center text-sm text-muted-foreground">
                   Belum punya akun?{" "}
                   <button onClick={() => setMode("signup")} className="font-semibold text-primary hover:underline">Coba gratis 15 hari</button>
@@ -242,7 +281,7 @@ export default function Login() {
                 <h2 className="font-display text-3xl font-extrabold text-foreground">Mulai Free Trial</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Daftarkan perusahaan Anda dan coba AITOMA gratis.</p>
                 <p className="mt-2 rounded-lg bg-[hsl(var(--warning))]/10 px-3 py-2 text-xs text-[hsl(var(--warning))]">
-                  Mode demo — pendaftaran ini belum tersambung ke alur onboarding backend (verifikasi email &amp; provisioning tenant). Untuk akun produksi, buat lewat Super Admin dulu.
+                  Setelah mendaftar, periksa email dan verifikasi alamat Anda sebelum tenant diprovisioning.
                 </p>
 
                 <form onSubmit={submitSignup} className="mt-6 space-y-4">
@@ -358,31 +397,6 @@ export default function Login() {
                   {!fp.sent && <Button type="submit" disabled={busy} className="w-full">{busy ? "Memproses..." : <>Kirim Tautan Reset <ArrowRight className="h-4 w-4" /></>}</Button>}
                   {fp.code && <Button type="submit" disabled={busy} className="w-full">{busy ? "Memproses..." : <>Reset Password <CheckCircle2 className="h-4 w-4" /></>}</Button>}
                 </form>
-                {/* FIX: once a reset link has been requested (fp.sent) but the user
-                    hasn't opened the emailed link yet (fp.code still empty), the form
-                    used to render no fields and no button at all — a dead end if the
-                    email was slow, filtered to spam, or sent to the wrong inbox. This
-                    lets them fire off another link without leaving the screen. */}
-                {fp.sent && !fp.code && (
-                  <div className="mt-4 space-y-2 text-center">
-                    <p className="text-xs text-muted-foreground">Tidak menerima email?</p>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await requestPasswordReset(fp.email.trim());
-                          toast.success("Tautan reset dikirim ulang. Periksa email Anda.");
-                        } catch (error) { toast.error(error.message || "Gagal mengirim ulang tautan reset."); }
-                        finally { setBusy(false); }
-                      }}
-                      className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
-                    >
-                      Kirim ulang tautan reset
-                    </button>
-                  </div>
-                )}
               </motion.div>
             )}
           </AnimatePresence>

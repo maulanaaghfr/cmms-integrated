@@ -529,7 +529,7 @@ export default function Preventive() {
             <Field label="Description">
               <Textarea rows={3} placeholder="Describe the maintenance procedure and purpose..." value={templateForm.description} onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })} />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Priority">
                 <Select value={templateForm.priority} onChange={(e) => setTemplateForm({ ...templateForm, priority: e.target.value })}>
                   {PRIORITIES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}
@@ -599,7 +599,7 @@ export default function Preventive() {
                 {Object.entries(SCHEDULE_MODE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </Select>
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Every" required>
                 <Input type="number" min="1" value={scheduleForm.interval_value} onChange={(e) => setScheduleForm({ ...scheduleForm, interval_value: e.target.value })} />
               </Field>
@@ -645,7 +645,7 @@ export default function Preventive() {
             <div>
               <h3 className="font-display text-sm font-bold text-foreground">{viewSchedule.name}</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
               <div><p className="font-semibold uppercase text-muted-foreground">Template</p><p className="mt-1">{templateName(viewSchedule.pm_template_id)}</p></div>
               <div><p className="font-semibold uppercase text-muted-foreground">Asset</p><p className="mt-1">{assetName(viewSchedule.asset_id)}</p></div>
               <div><p className="font-semibold uppercase text-muted-foreground">Site</p><p className="mt-1">{siteName(viewSchedule.site_id)}</p></div>

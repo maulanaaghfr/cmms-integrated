@@ -1,0 +1,11 @@
+vendor
+node_modules
+frontend
+.git
+.env
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+storage/tenant*

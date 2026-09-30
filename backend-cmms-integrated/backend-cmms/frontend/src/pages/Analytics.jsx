@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { Download, Gauge, ClipboardCheck, Timer, Activity, Wrench, Boxes, ClipboardList, ShieldCheck, Info } from "lucide-react";
 import { toast } from "sonner";
@@ -135,6 +135,11 @@ export default function Analytics() {
   /* ---- inventory analytics ---- */
   const lowStockCount = spareParts.filter((p) => (p.total_quantity ?? 0) <= (p.min_stock ?? 0)).length;
   const totalInventoryValue = spareParts.reduce((s, p) => s + (p.total_quantity ?? 0) * (p.unit_cost ?? 0), 0);
+  const trendData = Array.from({ length: 6 }, (_, index) => {
+    const month = new Date(); month.setDate(1); month.setMonth(month.getMonth() - 5 + index);
+    const inMonth = (value) => { const dateValue = value && new Date(value); return dateValue?.getMonth() === month.getMonth() && dateValue?.getFullYear() === month.getFullYear(); };
+    return { month: month.toLocaleString("id-ID", { month: "short" }), dibuat: workOrders.filter((item) => inMonth(item.created_at)).length, selesai: workOrders.filter((item) => ["COMPLETED", "CLOSED"].includes(item.status) && inMonth(item.completed_at || item.updated_at)).length };
+  });
 
   /* ---- reliability (real, from backend) ---- */
   const fleet = reliability?.fleet || null;
@@ -285,8 +290,8 @@ export default function Analytics() {
   return (
     <Reveal>
       <PageHeader
-        title="Laporan & Analitik"
-        subtitle="Metrik keandalan, biaya, dan performa peralatan — dihitung langsung dari data 180 hari terakhir."
+        title="Analytics & Laporan"
+        subtitle="Performa maintenance — data aktual dari work order dan aset."
         action={<Button variant="ghost" onClick={exportSummary}><Download className="h-4 w-4" /> Export CSV</Button>}
       />
 
@@ -323,6 +328,18 @@ export default function Analytics() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title="Tren Work Order — data aktual">
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} stroke="hsl(var(--muted-foreground))" />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} stroke="hsl(var(--muted-foreground))" />
+              <Tooltip contentStyle={tip} /><Legend />
+              <Line type="monotone" dataKey="dibuat" name="Dibuat" stroke="hsl(214 95% 52%)" strokeWidth={2.5} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="selesai" name="Selesai" stroke="hsl(152 62% 40%)" strokeWidth={2.5} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
         <ChartCard title="Work Order by Status">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={woByStatus}>

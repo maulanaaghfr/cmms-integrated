@@ -15,13 +15,8 @@ class TenantScope
         $query = DB::table('sites');
 
         return match ($tenantUser->role_key) {
-            'COMPANY_ADMIN' => $query,
+            'COMPANY_ADMIN', 'TECHNICIAN' => $query,
             'MANAGER', 'SUPERVISOR', 'VIEWER' => $query->where('id', $tenantUser->primary_site_id),
-            'TECHNICIAN' => $query->whereIn('id', DB::table('teams')
-                ->join('team_members', 'team_members.team_id', '=', 'teams.id')
-                ->where('team_members.tenant_user_id', $tenantUser->id)
-                ->where('team_members.is_active', true)
-                ->select('teams.site_id')),
             'OPERATOR' => $query->whereIn('id', DB::table('assets')
                 ->join('asset_operator_assignments', 'asset_operator_assignments.asset_id', '=', 'assets.id')
                 ->where('asset_operator_assignments.tenant_user_id', $tenantUser->id)
@@ -38,40 +33,32 @@ class TenantScope
             ?? throw new ApiException('SITE_NOT_FOUND', 'Site was not found in your permitted scope.', 404);
     }
 
+    /**
+     * Semua user terautentikasi pada database tenant yang sama
+     * boleh membaca asset. Isolasi antar-company tetap dijaga oleh
+     * koneksi/database tenant aktif.
+     *
+     * Method ini khusus untuk READ asset.
+     * Hak edit, archive, assignment, dan work order tetap memakai
+     * scope/role masing-masing.
+     */
+    public function readableAssets(object $tenantUser): Builder
+    {
+        return DB::table('assets');
+    }
+
     public function assets(object $tenantUser): Builder
     {
         $query = DB::table('assets');
 
         return match ($tenantUser->role_key) {
             'COMPANY_ADMIN' => $query,
-            'MANAGER', 'SUPERVISOR', 'VIEWER' => $query->where('site_id', $tenantUser->primary_site_id),
-            'TECHNICIAN' => $query->where(function (Builder $q) use ($tenantUser): void {
-                // Base scope: assets in sites covered by the technician's active team(s).
-                $q->whereIn('site_id', DB::table('teams')
-                    ->join('team_members', 'team_members.team_id', '=', 'teams.id')
-                    ->where('team_members.tenant_user_id', $tenantUser->id)
-                    ->where('team_members.is_active', true)
-                    ->select('teams.site_id'))
-                    // Extra scope: also allow any asset the technician has an
-                    // assigned Work Order for, even if that asset's site is
-                    // outside their team's normal coverage. Without this, a
-                    // technician assigned cross-site (or ad-hoc) gets blocked
-                    // from opening the Asset Detail page / scanning its QR,
-                    // even though they can already see the Work Order itself.
-                    ->orWhereIn('id', DB::table('work_orders')
-                        ->where('current_assignee_id', $tenantUser->id)
-                        ->select('asset_id'))
-                    ->orWhereIn('id', DB::table('work_order_assignments')
-                        ->join('work_orders', 'work_orders.id', '=', 'work_order_assignments.work_order_id')
-                        ->where('work_order_assignments.technician_id', $tenantUser->id)
-                        ->where('work_order_assignments.is_current', true)
-                        ->select('work_orders.asset_id'));
-            }),
-            'OPERATOR' => $query->whereIn('id', DB::table('asset_operator_assignments')
-                ->where('tenant_user_id', $tenantUser->id)
-                ->where('is_active', true)
-                ->where(fn (Builder $q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', now()))
-                ->select('asset_id')),
+            'MANAGER', 'SUPERVISOR', 'VIEWER', 'OPERATOR' => $query->where('site_id', $tenantUser->primary_site_id),
+            // QR asset adalah identitas asset dalam tenant. Semua teknisi
+            // aktif pada tenant boleh membuka detail asset melalui QR.
+            // Pembatasan work order dan timer tetap dilakukan oleh
+            // TenantScope::workOrders() dan assignedWorkOrder().
+            'TECHNICIAN' => $query,
             default => $query->whereRaw('1 = 0'),
         };
     }

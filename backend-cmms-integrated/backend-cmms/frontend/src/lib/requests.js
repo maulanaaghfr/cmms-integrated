@@ -1,4 +1,4 @@
-import { apiActiveTenant } from "./api";
+import { apiActiveTenant, apiActiveTenantBlob } from "./api";
 
 export const listRequests = (params) => apiActiveTenant("/requests", { params: { per_page: 100, ...params } });
 export const getRequest = (id) => apiActiveTenant(`/requests/${id}`);
@@ -7,7 +7,22 @@ export const updateRequest = (id, body) => apiActiveTenant(`/requests/${id}`, { 
 export const approveRequest = (id, body = {}) => apiActiveTenant(`/requests/${id}/approve`, { method: "POST", body });
 export const rejectRequest = (id, reason) => apiActiveTenant(`/requests/${id}/reject`, { method: "POST", body: { reason } });
 export const cancelRequest = (id, reason) => apiActiveTenant(`/requests/${id}/cancel`, { method: "POST", body: { reason } });
-export const addComment = (entityType, entityId, body) => apiActiveTenant("/comments", { method: "POST", body: { entity_type: entityType, entity_id: entityId, body } });
+export const addComment = (entityType, entityId, body) => {
+  const text = typeof body === "string" ? body : body?.body;
+
+  return apiActiveTenant("/comments", {
+    method: "POST",
+    body: {
+      entity_type: entityType,
+      entity_id: entityId,
+      body: String(text || "").trim(),
+    },
+  });
+};
+export const downloadAttachment = (id) => apiActiveTenantBlob(`/attachments/${id}/download`);
+
+export const deleteAttachment = (id) => apiActiveTenant(`/attachments/${id}`, { method: "DELETE" });
+
 export const uploadAttachment = (entityType, entityId, file, mediaRole = "OTHER") => {
   const body = new FormData();
   body.append("entity_type", entityType);

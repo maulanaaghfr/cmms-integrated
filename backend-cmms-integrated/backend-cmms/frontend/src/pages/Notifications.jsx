@@ -43,13 +43,13 @@ export default function Notifications() {
   };
   return <Reveal className="mx-auto max-w-6xl">
     <div className="mb-5 flex items-end justify-between">
-      <div><h2 className="font-display text-xl font-extrabold">Notifications</h2><p className="mt-1 text-sm text-muted-foreground">{unread} unread notifications</p></div>
-      <Button variant="ghost" className="px-3 py-2 text-xs" onClick={readAll} disabled={!unread}><Check className="h-3.5 w-3.5" /> Mark all read</Button>
+      <div><h2 className="font-display text-xl font-extrabold">Notifikasi</h2><p className="mt-1 text-sm text-muted-foreground">{unread} belum dibaca dari {notifications.length} total</p></div>
+      <Button variant="ghost" className="px-3 py-2 text-xs" onClick={readAll} disabled={!unread}><Check className="h-3.5 w-3.5" /> Tandai Semua Dibaca</Button>
     </div>
-    <Tabs tabs={[{ key: "all", label: `All (${notifications.length})` }, { key: "unread", label: `Unread (${unread})` }]} active={filter} onChange={setFilter} />
+    <Tabs tabs={[{ key: "all", label: "Semua" }, { key: "unread", label: `Belum Dibaca (${unread})` }]} active={filter} onChange={setFilter} />
     <Card className="mt-3 overflow-hidden p-0">
       {loading && <p className="p-8 text-center text-sm text-muted-foreground">Loading notifications…</p>}
-      {!loading && shown.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">No notifications found.</p>}
+      {!loading && shown.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">Belum ada notifikasi.</p>}
       {shown.map((item) => {
         const Icon = iconFor(item.type);
         return <button key={item.id} onClick={() => !item.read_at && read(item.id)} className={`flex w-full items-center gap-3 border-b border-border/60 px-4 py-3.5 text-left last:border-0 hover:bg-muted/50 ${item.read_at ? "bg-card" : "bg-primary/[0.025]"}`}>

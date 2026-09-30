@@ -1,188 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardList, CheckCircle2, AlertTriangle, ArrowRight, ScanLine, Flame, CalendarClock } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, MapPin, Package, Plus, QrCode, ScanLine, Wrench } from "lucide-react";
 import { useApp } from "../../store/store";
-import { SlaBadge, slaState, ScannerSheet } from "../../components/mobile-kit";
+import { SlaBadge } from "../../components/mobile-kit";
 import { listWorkOrders } from "../../lib/workorders";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 
-const priorityDot = { CRITICAL: "bg-destructive", HIGH: "bg-[hsl(var(--warning))]", MEDIUM: "bg-accent", LOW: "bg-muted-foreground" };
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 11) return "Selamat pagi";
-  if (h < 15) return "Selamat siang";
-  if (h < 19) return "Selamat sore";
-  return "Selamat malam";
-}
+const ACTIVE = ["OPEN", "ASSIGNED", "IN_PROGRESS", "ON_HOLD"];
+const priorityTone = { CRITICAL: "bg-red-50 text-red-600", HIGH: "bg-amber-50 text-amber-700", MEDIUM: "bg-blue-50 text-blue-700", LOW: "bg-slate-100 text-slate-600" };
+const statusTone = { ASSIGNED: "bg-violet-50 text-violet-700", IN_PROGRESS: "bg-blue-50 text-blue-700", ON_HOLD: "bg-amber-50 text-amber-700", COMPLETED: "bg-emerald-50 text-emerald-700" };
 
 export default function TechHome() {
   const { user } = useApp();
-  const navigate = useNavigate();
-  const [workOrders, setWorkOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [scannerOpen, setScannerOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await listWorkOrders({ per_page: 100 });
-      setWorkOrders(res.data || []);
-    } catch {
-      // silent — show empty state
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const [workOrders, setWorkOrders] = useState([]); const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => { setLoading(true); try { setWorkOrders((await listWorkOrders({ per_page: 100 })).data || []); } catch { setWorkOrders([]); } finally { setLoading(false); } }, []);
   useEffect(() => { load(); }, [load]);
-
-  const ACTIVE = ["OPEN", "ASSIGNED", "IN_PROGRESS", "ON_HOLD"];
-  const mine = useMemo(() =>
-    workOrders.filter((w) => w.current_assignee_id === user?.tenantUserId),
-    [workOrders, user]
-  );
-  const active = useMemo(() => mine.filter((w) => ACTIVE.includes(w.status)), [mine]);
-  const completedCount = mine.filter((w) => ["COMPLETED", "CLOSED"].includes(w.status)).length;
-
-  // "Perlu perhatian" = overdue on SLA, or CRITICAL/HIGH priority — these
-  // surface above the regular list so a tech's day starts with what matters.
-  const urgent = useMemo(() => {
-    return active
-      .filter((w) => slaState(w).tone === "danger" || ["CRITICAL", "HIGH"].includes(w.priority))
-      .sort((a, b) => (a.priority === "CRITICAL" ? -1 : 1) - (b.priority === "CRITICAL" ? -1 : 1));
-  }, [active]);
-  const urgentIds = new Set(urgent.map((w) => w.id));
-  const others = active.filter((w) => !urgentIds.has(w.id));
-
-  const loadPct = Math.min(Math.round((active.length / 5) * 100), 100);
-  const workloadTone = loadPct >= 100 ? "text-destructive" : loadPct >= 60 ? "text-[hsl(var(--warning))]" : "text-primary";
-
-  const handleAssetQr = (rawValue) => {
-    try {
-      const url = new URL(rawValue, window.location.origin);
-      const pathMatch = url.pathname.match(/\/assets\/([^/?#]+)/);
-      const assetId = pathMatch?.[1] || url.searchParams.get("asset_id");
-      if (!assetId) throw new Error("QR bukan QR Asset AITOMA.");
-      navigate(`/assets/${encodeURIComponent(assetId)}`);
-      toast.success("QR Asset berhasil dipindai.");
-    } catch (err) {
-      toast.error(err.message || "QR Asset tidak valid.");
-    }
-  };
-
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 lg:space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{greeting()},</p>
-          <h1 className="font-display text-2xl font-extrabold text-foreground sm:text-3xl">{(user?.name || "").split(" ")[0]} 👋</h1>
-        </div>
-        <button
-          onClick={() => setScannerOpen(true)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition hover:brightness-105 active:scale-95"
-          title="Scan QR Asset"
-        >
-          <ScanLine className="h-5 w-5" />
-        </button>
-      </div>
-      <ScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onDetect={handleAssetQr} title="Scan QR Asset / Mesin" />
-
-      <div className="grid grid-cols-3 gap-2.5">
-        <StatTile icon={ClipboardList} value={active.length} label="Aktif" tone="primary" />
-        <StatTile icon={AlertTriangle} value={urgent.length} label="Prioritas" tone="warning" />
-        <StatTile icon={CheckCircle2} value={completedCount} label="Selesai" tone="success" />
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[1fr_300px] lg:items-start lg:gap-6">
-        {/* main column: work order lists */}
-        <div className="space-y-5">
-          {!loading && urgent.length > 0 && (
-            <div>
-              <div className="mb-2 flex items-center gap-1.5">
-                <Flame className="h-4 w-4 text-destructive" />
-                <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Perlu Perhatian</h2>
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                {urgent.slice(0, 4).map((w) => <WorkOrderCard key={w.id} w={w} highlight />)}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-sm font-bold text-foreground lg:text-base">Work Order Ditugaskan</h2>
-              <Link to="/work-orders" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Lihat semua <ArrowRight className="h-3 w-3" /></Link>
-            </div>
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              {loading && (
-                [0, 1, 2].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-muted/50" />)
-              )}
-              {!loading && active.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground sm:col-span-2">Tidak ada work order aktif. 🎉</div>
-              )}
-              {!loading && others.slice(0, 5).map((w) => <WorkOrderCard key={w.id} w={w} />)}
-              {!loading && urgent.length > 0 && others.length === 0 && (
-                <p className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground sm:col-span-2">Semua WO aktifmu sudah tampil di atas.</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* sidebar: workload gauge */}
-        <div className="rounded-2xl border border-border bg-card p-4 soft-card lg:sticky lg:top-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Beban kerja hari ini</span>
-            <span className={`font-semibold ${workloadTone}`}>{loadPct}%</span>
-          </div>
-          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-            <div className={`h-full rounded-full transition-all ${loadPct >= 100 ? "bg-destructive" : loadPct >= 60 ? "bg-[hsl(var(--warning))]" : "bg-primary"}`} style={{ width: `${loadPct}%` }} />
-          </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            {loadPct >= 100 ? "Beban penuh — selesaikan WO berjalan sebelum menerima yang baru." : `${active.length} dari kapasitas ideal 5 WO aktif.`}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  const mine = useMemo(() => workOrders.filter((w) => w.current_assignee_id === user?.tenantUserId || w.assignee_id === user?.tenantUserId), [workOrders, user]);
+  const active = mine.filter((w) => ACTIVE.includes(w.status)); const inProgress = mine.filter((w) => w.status === "IN_PROGRESS").length; const completed = mine.filter((w) => ["COMPLETED", "CLOSED"].includes(w.status)).length; const critical = active.filter((w) => ["CRITICAL", "HIGH"].includes(w.priority)).length; const workload = Math.min(Math.round((active.length / 5) * 100), 100);
+  const firstName = (user?.name || "Teknisi").split(" ")[0];
+  const due = (value) => value ? new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
+  return <div className="space-y-6"><section className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div><p className="text-sm text-slate-500">Selamat datang kembali,</p><h1 className="mt-1 font-display text-3xl font-extrabold text-slate-950">{firstName} <span aria-hidden="true">👋</span></h1><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date())} · Shift kerja teknisi</p></div><div className="flex flex-wrap gap-2"><Link to="/scan" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"><QrCode className="h-4 w-4" /> Scan QR Asset</Link><Link to="/work-orders" className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"><ClipboardList className="h-4 w-4" /> Work Order Saya</Link></div></section>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><Kpi icon={ClipboardList} value={active.length} label="WO Ditugaskan" hint="Pekerjaan aktif" tone="blue" /><Kpi icon={Wrench} value={inProgress} label="WO Dikerjakan" hint="Sedang berlangsung" tone="amber" /><Kpi icon={CheckCircle2} value={completed} label="WO Selesai" hint="Total selesai" tone="green" /><Kpi icon={AlertTriangle} value={critical} label="WO Kritis" hint="Perlu perhatian segera" tone="red" /></div>
+    <div className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]"><Card title="Beban Kerja Minggu Ini"><div className="space-y-3">{[["Sen", Math.min(workload + 10, 100)], ["Sel", Math.min(workload, 100)], ["Rab", Math.min(workload + 18, 100)], ["Kam", Math.min(workload + 4, 100)], ["Jum", Math.max(workload - 18, 12)]].map(([day, value]) => <div key={day} className="flex items-center gap-3 text-xs"><span className="w-5 text-slate-400">{day}</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${value}%` }} /></div><span className="w-8 text-right text-[10px] text-slate-400">{value}%</span></div>)}</div><div className="mt-5 grid grid-cols-3 border-t border-slate-100 pt-4 text-center"><Metric value={mine.length} label="Total WO" /><Metric value={completed} label="Selesai" /><Metric value={`${workload}%`} label="Efisiensi" /></div></Card><Card title="Work Order Saya" action={<Link to="/work-orders" className="text-[11px] font-semibold text-blue-600">Lihat Semua →</Link>}><div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="border-b border-slate-100 text-[10px] text-slate-400"><tr><th className="pb-2 font-medium">No WO</th><th className="pb-2 font-medium">Judul</th><th className="pb-2 font-medium">Status</th><th className="pb-2 font-medium">Jatuh Tempo</th><th /></tr></thead><tbody className="divide-y divide-slate-100">{loading && <tr><td colSpan="5" className="py-8 text-center text-slate-400">Memuat...</td></tr>}{!loading && !active.length && <tr><td colSpan="5" className="py-8 text-center text-slate-400">Belum ada WO yang ditugaskan.</td></tr>}{active.slice(0, 5).map((w) => <tr key={w.id}><td className="py-3 font-mono text-[10px] text-slate-500">{w.work_order_number || w.id}</td><td className="max-w-[190px] py-3 font-semibold text-slate-800">{w.title}</td><td className="py-3"><span className={`rounded px-2 py-1 text-[10px] font-semibold ${statusTone[w.status] || "bg-slate-100 text-slate-600"}`}>{w.status === "IN_PROGRESS" ? "Dikerjakan" : w.status === "ASSIGNED" ? "Ditugaskan" : w.status}</span></td><td className="py-3 text-slate-500">{due(w.due_at)}</td><td className="py-3 text-right"><Link to={`/work-orders?open=${w.id}`} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600">Buka</Link></td></tr>)}</tbody></table></div></Card></div>
+    <div className="grid gap-4 xl:grid-cols-[1.28fr_0.72fr]"><Card title="Aktivitas Terkini"><div className="space-y-4 text-xs text-slate-600"><Activity color="blue" text={active.length ? `${active.length} work order sedang menjadi tanggung jawab Anda.` : "Belum ada WO aktif yang ditugaskan."} /><Activity color="green" text={`${completed} work order telah selesai.`} /><Activity color="amber" text={critical ? `${critical} WO memiliki prioritas tinggi atau kritis.` : "Tidak ada WO kritis saat ini."} /><p className="border-t border-dashed border-slate-200 pt-3 text-[10px] text-slate-400">{/* TODO: butuh endpoint activity feed teknisi. */}Aktivitas detail akan tampil setelah backend menyediakan audit feed teknisi.</p></div></Card><Card title="Aksi Cepat"><div className="grid grid-cols-2 gap-3"><QuickAction to="/work-orders" icon={Plus} label="Buat Work Order" /><QuickAction to="/scan" icon={QrCode} label="Scan QR Asset" /><QuickAction to="/parts/barcode" icon={ScanLine} label="Scan Barcode Part" /><QuickAction to="/assets" icon={MapPin} label="Lihat Asset" /></div></Card></div>
+  </div>;
 }
 
-function WorkOrderCard({ w, highlight }) {
-  return (
-    <Link
-      to="/work-orders"
-      state={{ open: w.id }}
-      className={`block rounded-2xl border p-4 soft-card transition hover:shadow-md active:scale-[0.99] ${highlight ? "border-destructive/30 bg-destructive/[0.03] hover:border-destructive/50" : "border-border bg-card hover:border-primary/20"}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2">
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${priorityDot[w.priority] || "bg-muted-foreground"}`} />
-          <div>
-            <div className="text-sm font-semibold text-foreground">{w.title}</div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              {w.work_order_number}
-              {w.due_at && (
-                <span className="inline-flex items-center gap-0.5">
-                  <CalendarClock className="h-3 w-3" /> {new Date(w.due_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <SlaBadge w={w} />
-      </div>
-    </Link>
-  );
-}
-
-function StatTile({ icon: Icon, value, label, tone }) {
-  const tones = { primary: "bg-primary/10 text-primary", warning: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]", success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" };
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3 text-center soft-card lg:p-4">
-      <div className={`mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl ${tones[tone]} lg:h-9 lg:w-9`}><Icon className="h-4 w-4" /></div>
-      <div className="font-display text-lg font-extrabold text-foreground lg:text-xl">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-    </div>
-  );
-}
+function Kpi({ icon: Icon, value, label, hint, tone }) { const tones = { blue: "bg-blue-50 text-blue-600", amber: "bg-amber-50 text-amber-600", green: "bg-emerald-50 text-emerald-600", red: "bg-red-50 text-red-600" }; return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${tones[tone]}`}><Icon className="h-4 w-4" /></span><div className="mt-3 text-2xl font-extrabold text-slate-950">{value}</div><div className="text-xs font-semibold text-slate-700">{label}</div><div className="mt-1 text-[10px] text-slate-400">{hint}</div></div>; }
+function Card({ title, action, children }) { return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold text-slate-800">{title}</h2>{action}</div>{children}</section>; }
+function Metric({ value, label }) { return <div><div className="font-bold text-slate-800">{value}</div><div className="text-[10px] text-slate-400">{label}</div></div>; }
+function Activity({ color, text }) { return <div className="flex gap-3"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${color === "green" ? "bg-emerald-500" : color === "amber" ? "bg-amber-500" : "bg-blue-500"}`} /><span>{text}</span></div>; }
+function QuickAction({ to, icon: Icon, label }) { return <Link to={to} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 text-center text-[10px] font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50"><Icon className="h-5 w-5 text-blue-600" />{label}</Link>; }

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Home, ClipboardList, Bell, User, ClipboardPlus, WifiOff, Wifi } from "lucide-react";
+import { Home, ClipboardList, Bell, User, ClipboardPlus, WifiOff, Wifi, ScanLine, ShoppingCart } from "lucide-react";
 import Logo from "./Logo";
-import { useApp, ROLES } from "../store/store";
+import { useApp } from "../store/store";
 import { listNotifications } from "../lib/dashboard";
 
 export default function MobileShell({ children }) {
@@ -11,24 +10,25 @@ export default function MobileShell({ children }) {
   const [offline, setOffline] = useState(false);
   const [unread, setUnread] = useState(0);
   const isTech = user?.role === "technician";
+  const isVendor = user?.role === "vendor";
 
   useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      listNotifications()
-        .then((res) => { if (!cancelled) setUnread((res.data || []).filter((n) => !n.read_at).length); })
-        .catch(() => {});
-    };
-    load();
-    // Keep the badge fresh without needing a manual refresh — mirrors what
-    // techs expect from a real mobile app (e.g. new assignment pings in).
-    const interval = window.setInterval(load, 45000);
-    return () => { cancelled = true; window.clearInterval(interval); };
+    listNotifications()
+      .then((res) => setUnread((res.data || []).filter((n) => !n.read_at).length))
+      .catch(() => {});
   }, []);
 
-  const tabs = isTech
+  const tabs = isVendor
     ? [
         { to: "/dashboard", label: "Home", icon: Home },
+        { to: "/procurement", label: "PO", icon: ShoppingCart },
+        { to: "/notifications", label: "Notifikasi", icon: Bell, badge: unread },
+        { to: "/profile", label: "Profil", icon: User },
+      ]
+    : isTech
+    ? [
+        { to: "/dashboard", label: "Home", icon: Home },
+        { to: "/scan", label: "Scan", icon: ScanLine },
         { to: "/work-orders", label: "Kerja", icon: ClipboardList },
         { to: "/notifications", label: "Notifikasi", icon: Bell, badge: unread },
         { to: "/profile", label: "Profil", icon: User },
@@ -40,17 +40,14 @@ export default function MobileShell({ children }) {
         { to: "/profile", label: "Profil", icon: User },
       ];
 
-  const roleLabel = ROLES[user?.role]?.label || user?.role;
-  const initials = (user?.name || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-
   return (
     <div className="flex min-h-screen flex-col bg-background app-gradient">
-      <header className="sticky top-0 z-30 flex items-center gap-2.5 border-b bg-card/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-card/95 px-4 py-3 backdrop-blur">
         <Logo textClass="text-foreground" />
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => setOffline((o) => !o)}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition active:scale-95 ${
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
               offline ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]" : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]"
             }`}
             title="Toggle offline mode"
@@ -58,13 +55,6 @@ export default function MobileShell({ children }) {
             {offline ? <WifiOff className="h-3.5 w-3.5" /> : <Wifi className="h-3.5 w-3.5" />}
             {offline ? "Offline" : "Online"}
           </button>
-          <NavLink
-            to="/profile"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground"
-            title={user?.name}
-          >
-            {initials}
-          </NavLink>
         </div>
       </header>
 
@@ -77,7 +67,7 @@ export default function MobileShell({ children }) {
       <main className="aitoma-scroll flex-1 overflow-y-auto px-4 py-4 pb-24">{children}</main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur">
-        <div className="mx-auto flex max-w-md items-stretch justify-between px-2 pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
           {tabs.map((t) => (
             <NavLink
               key={t.to}
@@ -90,17 +80,10 @@ export default function MobileShell({ children }) {
             >
               {({ isActive }) => (
                 <>
-                  <span className="relative flex h-9 w-9 items-center justify-center rounded-xl">
-                    {isActive && (
-                      <motion.span
-                        layoutId="mobile-nav-active"
-                        className="absolute inset-0 rounded-xl bg-primary/10"
-                        transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                      />
-                    )}
-                    <t.icon className="relative h-5 w-5" />
+                  <span className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition ${isActive ? "bg-primary/10" : ""}`}>
+                    <t.icon className="h-5 w-5" />
                     {!!t.badge && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-destructive-foreground">
+                      <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground">
                         {t.badge > 9 ? "9+" : t.badge}
                       </span>
                     )}

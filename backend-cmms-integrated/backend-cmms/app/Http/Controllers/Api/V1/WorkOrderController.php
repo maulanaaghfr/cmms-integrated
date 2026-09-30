@@ -439,7 +439,7 @@ class WorkOrderController extends Controller
         if (! $entry) {
             throw new ApiException('ACTIVE_TIMER_NOT_FOUND', 'No active timer exists for this work order.', 404);
         }
-        $minutes = max(0, now()->diffInMinutes($entry->started_at));
+        $minutes = (int) now()->diffInMinutes($entry->started_at, absolute: true);
         DB::table('work_order_labor_entries')->where('id', $entry->id)->update(['ended_at' => now(), 'duration_minutes' => $minutes, 'notes' => $request->input('notes', $entry->notes), 'updated_at' => now()]);
 
         return ApiData::item(DB::table('work_order_labor_entries')->where('id', $entry->id)->first());
@@ -511,7 +511,7 @@ class WorkOrderController extends Controller
     private function stopTimers(string $workOrderId): void
     {
         foreach (DB::table('work_order_labor_entries')->where('work_order_id', $workOrderId)->whereNull('ended_at')->get() as $entry) {
-            DB::table('work_order_labor_entries')->where('id', $entry->id)->update(['ended_at' => now(), 'duration_minutes' => max(0, now()->diffInMinutes($entry->started_at)), 'updated_at' => now()]);
+            DB::table('work_order_labor_entries')->where('id', $entry->id)->update(['ended_at' => now(), 'duration_minutes' => (int) now()->diffInMinutes($entry->started_at, absolute: true), 'updated_at' => now()]);
         }
     }
 

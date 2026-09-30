@@ -6,16 +6,15 @@ import JsBarcode from "jsbarcode";
 /* ------------------------------- buttons ------------------------------- */
 export function Button({ children, variant = "primary", className = "", ...props }) {
   const styles = {
-    primary: "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:brightness-110",
-    ghost: "border bg-background text-foreground hover:bg-muted",
-    outline: "border border-primary/30 bg-transparent text-primary hover:bg-primary/5",
+    primary: "bg-[#1769e8] text-white shadow-[0_6px_16px_rgba(23,105,232,0.22)] hover:bg-[#0f5bd0]",
+    ghost: "border border-[#dce5f1] bg-white text-[#344054] hover:bg-[#f5f8fc]",
     danger: "bg-destructive text-destructive-foreground hover:brightness-110",
     accent: "bg-accent text-accent-foreground hover:brightness-110",
   };
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-[9px] px-4 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
     >
       {children}
     </button>
@@ -36,7 +35,7 @@ export function IconButton({ children, className = "", ...props }) {
 /* -------------------------------- card --------------------------------- */
 export function Card({ children, className = "" }) {
   return (
-    <div className={`soft-card rounded-xl border border-border/80 bg-card p-4 lg:p-5 ${className}`}>
+    <div className={`soft-card rounded-[14px] border border-[#e4ebf5] bg-white p-4 lg:p-5 ${className}`}>
       {children}
     </div>
   );
@@ -44,10 +43,10 @@ export function Card({ children, className = "" }) {
 
 export function PageHeader({ title, subtitle, action }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-5 flex flex-col gap-3 border-b border-[#e7edf5] pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="font-display text-lg font-extrabold tracking-tight text-foreground">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+        <h1 className="font-display text-[18px] font-extrabold tracking-tight text-[#172033]">{title}</h1>
+        {subtitle && <p className="mt-1 text-[13px] text-[#7d8ba2]">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -123,34 +122,29 @@ export function Modal({ open, onClose, title, children, footer, wide = false }) 
   }, [open, onClose]);
 
   return (
-    <AnimatePresence>
+    <React.Fragment>
       {open && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/40 p-4 backdrop-blur-sm sm:items-center"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        <div
+          className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-foreground/40 p-3 sm:items-center sm:p-4"
           onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
         >
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className={`my-auto w-full ${wide ? "max-w-2xl" : "max-w-[460px]"} rounded-2xl border bg-card shadow-2xl`}
+          <div
+            className={`my-auto flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl sm:max-h-[calc(100dvh-2rem)] ${wide ? "max-w-lg sm:max-w-2xl lg:max-w-4xl" : "max-w-lg sm:max-w-xl md:max-w-2xl"}`}
           >
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <h3 className="font-display text-base font-bold text-foreground">{title}</h3>
+            <div className="flex shrink-0 items-center justify-between border-b px-4 py-4 sm:px-6 md:px-8">
+              <h3 className="min-w-0 pr-3 font-display text-base font-bold text-foreground">{title}</h3>
               <button onClick={onClose} aria-label="Close" className="rounded-md p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
             </div>
-            <div className="max-h-[65vh] overflow-y-auto px-5 py-4 aitoma-scroll">{children}</div>
-            {footer && <div className="flex justify-end gap-2 border-t px-5 py-3">{footer}</div>}
-          </motion.div>
-        </motion.div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 aitoma-scroll sm:px-6 sm:py-6 md:px-8 md:py-8">{children}</div>
+            {footer && <div className="flex shrink-0 flex-col gap-2 border-t bg-card px-4 py-3 [&>button]:w-full sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:[&>button]:w-auto md:px-8">{footer}</div>}
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </React.Fragment>
   );
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel = "Hapus", confirmDisabled = false }) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, message }) {
   return (
     <Modal
       open={open}
@@ -158,8 +152,8 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
       title={title || "Konfirmasi"}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={confirmDisabled}>Batal</Button>
-          <Button variant="danger" onClick={onConfirm} disabled={confirmDisabled}>{confirmDisabled ? "Menghapus..." : confirmLabel}</Button>
+          <Button variant="ghost" onClick={onClose}>Batal</Button>
+          <Button variant="danger" onClick={onConfirm}>Hapus</Button>
         </>
       }
     >
@@ -186,7 +180,7 @@ export function Field({ label, children, required }) {
 }
 
 const inputCls =
-  "w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20";
+  "w-full rounded-lg border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 export function Input(props) {
   return <input {...props} className={`${inputCls} ${props.className || ""}`} />;
@@ -200,9 +194,17 @@ export function Textarea(props) {
 }
 
 /* -------------------------------- search ------------------------------- */
-export function SearchInput({ value, onChange, placeholder }) {
+// NOTE: lebar TIDAK di-hardcode di sini (dulu ada "sm:w-72" bawaan komponen
+// ini, yang bikin dia membocor/overflow keluar dari wrapper parent yang
+// lebih sempit — misalnya wrapper "sm:w-56" di WorkOrders.jsx — karena
+// parent-nya tidak punya overflow-hidden. Itu penyebab search box menabrak
+// tombol "New WO"). Sekarang lebar sepenuhnya mengikuti wrapper/parent
+// pemanggilnya: cukup bungkus <SearchInput /> dengan div yang sudah punya
+// class lebar sesuai kebutuhan (mis. "w-full sm:w-56"), atau lewat prop
+// className kalau perlu dipasang langsung tanpa wrapper tambahan.
+export function SearchInput({ value, onChange, placeholder, className = "" }) {
   return (
-    <div className="relative w-full sm:w-72">
+    <div className={`relative w-full ${className}`}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <input
         value={value}
@@ -218,7 +220,7 @@ export function SearchInput({ value, onChange, placeholder }) {
 export function Table({ columns, rows, empty, onRowClick, rowKey = "id" }) {
   return (
     <div className="overflow-x-auto aitoma-scroll">
-      <table className="w-full min-w-[720px] border-collapse text-[13px]">
+      <table className="w-full min-w-180 border-collapse text-[13px]">
         <thead>
           <tr className="border-b text-left">
             {columns.map((c) => (
@@ -258,7 +260,7 @@ export function Table({ columns, rows, empty, onRowClick, rowKey = "id" }) {
 /* -------------------------------- tabs --------------------------------- */
 export function Tabs({ tabs, active, onChange }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className={`flex flex-wrap gap-1.5 border-b border-[#e7edf5] pb-3`}>
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -371,7 +373,7 @@ export function StatCard({ icon: Icon, label, value, delta, tone = "primary", hi
     warning: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]",
   };
   return (
-    <Card className="flex min-h-[112px] flex-col justify-between">
+    <Card className="flex min-h-28 flex-col justify-between">
       <div className="flex items-start justify-between">
         <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>
@@ -386,3 +388,4 @@ export function StatCard({ icon: Icon, label, value, delta, tone = "primary", hi
     </Card>
   );
 }
+

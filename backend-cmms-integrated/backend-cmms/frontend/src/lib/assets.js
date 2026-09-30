@@ -10,6 +10,9 @@ export function listAssets(params = {}) {
 export function getAsset(id) {
   return apiActiveTenant(`/assets/${id}`);
 }
+export function scanAsset(id) {
+  return apiActiveTenant(`/assets/${id}/scan`, { method: "POST" });
+}
 export function createAsset(payload) {
   return apiActiveTenant("/assets", { method: "POST", body: payload });
 }

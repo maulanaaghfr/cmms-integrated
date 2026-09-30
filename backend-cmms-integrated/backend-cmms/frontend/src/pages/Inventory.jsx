@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Pencil, Trash2, PackageX, Package, AlertTriangle, Boxes, Warehouse, TrendingUp, ScanLine, Printer } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Pencil, Trash2, PackageX, Package, AlertTriangle, Boxes, Warehouse, TrendingUp, ScanLine, Printer, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useApp, idr } from "../store/store";
 import {
@@ -12,7 +13,7 @@ import {
   listSparePartCategories, adjustStock,
 } from "../lib/inventory";
 import { listSites } from "../lib/assets";
-import { printBarcodeLabel } from "../components/CodeTools";
+import { downloadBarcodeLabel, printBarcodeLabel } from "../components/CodeTools";
 
 const blankPart = {
   site_id: "", spare_part_category_id: "", code: "", name: "", description: "",
@@ -29,7 +30,8 @@ const stockStatus = (part) => {
 
 export default function Inventory() {
   const { user } = useApp();
-  const canEdit = ["company_admin", "manager"].includes(user?.role);
+  const [searchParams] = useSearchParams();
+  const canEdit = ["company_admin", "manager", "warehouse"].includes(user?.role);
 
   const [tab, setTab] = useState("parts");
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ export default function Inventory() {
   const [categories, setCategories] = useState([]);
   const [sites, setSites] = useState([]);
 
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => searchParams.get("barcode") || "");
   const [form, setForm] = useState(null);
   const [warehouseForm, setWarehouseForm] = useState(null);
   const [del, setDel] = useState(null);
@@ -77,6 +79,7 @@ export default function Inventory() {
   const rows = useMemo(() => spareParts.filter((p) =>
     (p.name || "").toLowerCase().includes(q.toLowerCase()) ||
     (p.code || "").toLowerCase().includes(q.toLowerCase()) ||
+    (p.barcode || "").toLowerCase().includes(q.toLowerCase()) ||
     (p.spare_part_category_id || "").toLowerCase().includes(q.toLowerCase())
   ), [spareParts, q]);
 
@@ -250,6 +253,7 @@ export default function Inventory() {
             <TrendingUp className="h-4 w-4" />
           </IconButton>
         )}
+        {canEdit && <IconButton onClick={() => downloadBarcodeLabel({ value: r.barcode || r.code, code: r.code })} title="Download Barcode"><Download className="h-4 w-4" /></IconButton>}
         {canEdit && <IconButton onClick={() => printBarcodeLabel({ value: r.barcode || r.code, title: r.name, code: r.code, unit: r.unit })} title="Print Label"><Printer className="h-4 w-4" /></IconButton>}
         {canEdit && <IconButton onClick={() => setForm({ ...blankPart, ...r })}><Pencil className="h-4 w-4" /></IconButton>}
         {canEdit && <IconButton onClick={() => setDel(r)} className="hover:text-destructive"><Trash2 className="h-4 w-4" /></IconButton>}
@@ -260,8 +264,8 @@ export default function Inventory() {
   return (
     <Reveal>
       <PageHeader
-        title="Inventory Sparepart"
-        subtitle="Kelola stok suku cadang, gudang, dan titik pemesanan ulang."
+        title="Inventaris Suku Cadang"
+        subtitle={`${spareParts.length} item`}
         action={canEdit && (
           <div className="flex gap-2"><Button variant="ghost" onClick={openScanner}><ScanLine className="h-4 w-4" /> Scan Barcode</Button><Button onClick={() => setForm({ ...blankPart, site_id: sites[0]?.id || "" })} disabled={sites.length === 0}><Plus className="h-4 w-4" /> Tambah Sparepart</Button></div>
         )}

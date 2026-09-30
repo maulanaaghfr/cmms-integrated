@@ -89,6 +89,7 @@ const DEFAULT_CENTER = [-7.4478, 112.7183]; // Sidoarjo, fallback when nothing g
 function SiteMap({ sites, onAdd, canEdit, overlayOpen = false }) {
   const [coords, setCoords] = useState({}); // site_id -> {lat, lng}
   const [resolving, setResolving] = useState(false);
+  const mapRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +120,11 @@ function SiteMap({ sites, onAdd, canEdit, overlayOpen = false }) {
       ]
     : DEFAULT_CENTER;
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => mapRef.current?.invalidateSize(), 200);
+    return () => window.clearTimeout(timer);
+  }, [sites.length, markers.length, center[0], center[1]]);
+
   return (
     <Card className="relative z-0 isolate flex h-full flex-col overflow-hidden p-0">
       <div className="flex items-center justify-between p-4 pb-3">
@@ -133,7 +139,14 @@ function SiteMap({ sites, onAdd, canEdit, overlayOpen = false }) {
         {sites.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">Belum ada site.</div>
         ) : (
-          <MapContainer className="relative z-0" center={center} zoom={markers.length ? 13 : 11} scrollWheelZoom={false} style={{ height: "100%", width: "100%", minHeight: 220, zIndex: 0 }}>
+          <MapContainer
+            className="relative z-0"
+            center={center}
+            zoom={markers.length ? 13 : 11}
+            scrollWheelZoom={false}
+            whenReady={(event) => { mapRef.current = event.target; window.setTimeout(() => event.target.invalidateSize(), 200); }}
+            style={{ height: "100%", width: "100%", minHeight: 220, zIndex: 0 }}
+          >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

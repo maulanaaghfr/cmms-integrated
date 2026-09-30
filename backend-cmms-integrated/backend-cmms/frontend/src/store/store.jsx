@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { apiLogin, apiLogout, apiFetchSession, selectTenant, apiChangePassword } from "../lib/auth";
+import { apiLogin, apiLogout, apiFetchSession, selectTenant, updateProfile } from "../lib/auth";
 import { getToken } from "../lib/api";
 
 /* ---------------------------------- utils --------------------------------- */
@@ -23,9 +23,11 @@ export const ROLES = {
   requester: { label: "Requester", scope: "Hanya submit request & lihat status" },
   view_only: { label: "View Only", scope: "Melihat semua data, tidak dapat mengubah" },
   provider: { label: "Provider (Vendor)", scope: "Akses eksternal — kolaborasi WO bersama, compliance & chat" },
+  vendor: { label: "Vendor", scope: "PO, pengiriman, dan sparepart milik sendiri" },
+  warehouse: { label: "Warehouse", scope: "Penerimaan, penyimpanan, pengeluaran, dan stock opname" },
 };
 
-export const CLIENT_ROLE_OPTIONS = ["company_admin", "limited_admin", "manager", "technician", "limited_technician", "operator", "requester", "view_only"];
+export const CLIENT_ROLE_OPTIONS = ["company_admin", "manager", "technician", "operator", "vendor", "warehouse"];
 export const DEPARTMENTS = ["Maintenance", "Operations", "Production", "Engineering", "Warehouse", "Procurement", "Management"];
 
 /* trial length by tier (days) — used by Login signup form (demo only) */
@@ -93,11 +95,20 @@ export function AppProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const res = await apiLogin(email, password);
-    if (!res.ok) return { ok: false, error: res.error };
+    if (!res.ok) return { ok: false, error: res.error, errorCode: res.errorCode };
     if (res.needsTenantSelection) {
       setPendingTenantChoice({ apiUser: res.user, memberships: res.memberships });
       return { ok: true, needsTenantSelection: true, memberships: res.memberships };
     }
+    if (
+      res.tenantDomain &&
+      typeof window !== "undefined" &&
+      window.location.hostname !== res.tenantDomain
+    ) {
+      window.location.replace(`https://${res.tenantDomain}/dashboard`);
+      return { ok: true, redirecting: true };
+    }
+
     setUser(res.user);
     return { ok: true, user: res.user };
   }, []);
@@ -105,6 +116,15 @@ export function AppProvider({ children }) {
   const completeTenantSelection = useCallback(async (membership) => {
     if (!pendingTenantChoice) return { ok: false, error: "Sesi login sudah kadaluarsa, coba masuk lagi." };
     const sessionUser = await selectTenant(pendingTenantChoice.apiUser, membership);
+    if (
+      membership.domain &&
+      typeof window !== "undefined" &&
+      window.location.hostname !== membership.domain
+    ) {
+      window.location.replace(`https://${membership.domain}/dashboard`);
+      return { ok: true, redirecting: true };
+    }
+
     setUser(sessionUser);
     setPendingTenantChoice(null);
     return { ok: true, user: sessionUser };
@@ -116,32 +136,15 @@ export function AppProvider({ children }) {
     setPendingTenantChoice(null);
   }, []);
 
-  /**
-   * Change the signed-in user's temporary/expired password.
-   *
-   * FIX (2026-09-04): required because a user with `must_change_password`
-   * is blocked from EVERY tenant-scoped API call (work orders, users,
-   * notifications, ...) by the backend — but nothing in the frontend ever
-   * gave that user a way to actually change the password, so they'd land
-   * on an empty dashboard with silent 403s in the console and no
-   * indication why. See ChangePassword.jsx, rendered by Shell() in App.jsx
-   * whenever `user.mustChangePassword` is true, before any other route.
-   *
-   * On success we re-fetch the whole session (not just flip a flag)
-   * because must_change_password being true was also blocking
-   * resolveTenantUserId()'s call to GET /users/me — so the user's session
-   * so far may have `tenantUserId: null` too. Re-running apiFetchSession()
-   * resolves both in one go.
-   */
-  const changePassword = useCallback(async ({ currentPassword, password, passwordConfirmation }) => {
-    try {
-      await apiChangePassword({ currentPassword, password, passwordConfirmation });
-      const session = await apiFetchSession();
-      if (session) setUser(session.user);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message || "Gagal mengganti password." };
-    }
+  const saveProfile = useCallback(async (data) => {
+    const response = await updateProfile(data);
+    const next = response?.data?.user;
+    if (next) setUser((current) => ({ ...current, name: next.full_name, email: next.email, phone: next.phone }));
+    return response;
+  }, []);
+
+  const markPasswordChanged = useCallback(() => {
+    setUser((current) => current ? { ...current, mustChangePassword: false } : current);
   }, []);
 
   // Demo-only signup — not connected to real onboarding backend.
@@ -154,7 +157,8 @@ export function AppProvider({ children }) {
     completeTenantSelection,
     login,
     logout,
-    changePassword,
+    saveProfile,
+    markPasswordChanged,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

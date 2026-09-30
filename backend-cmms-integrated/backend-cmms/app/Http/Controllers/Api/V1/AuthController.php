@@ -98,11 +98,28 @@ class AuthController extends Controller
         ]);
     }
 
+    public function updateProfile(Request $request): mixed
+    {
+        $data = $request->validate([
+            'full_name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $user = $request->user();
+        $user->forceFill([
+            'full_name' => $data['full_name'],
+            'phone' => $data['phone'] ?? null,
+        ])->save();
+
+        return ApiData::item(['user' => $this->userPayload($user)]);
+    }
+
     public function password(Request $request): mixed
     {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
             'password' => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
+            'password_confirmation' => ['required', 'string'],
         ]);
         $user = $request->user();
         if (! Hash::check($data['current_password'], $user->password_hash)) {
@@ -148,6 +165,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'token' => ['required', 'string'], 'email' => ['required', 'email:rfc', 'max:320'],
             'password' => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
+            'password_confirmation' => ['required', 'string'],
         ]);
         $status = PasswordBroker::reset([
             'email' => mb_strtolower(trim($data['email'])), 'password' => $data['password'],

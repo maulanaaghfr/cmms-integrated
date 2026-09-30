@@ -24,6 +24,7 @@ foreach (config('tenancy.central_domains') as $domain) {
         Route::middleware('auth:sanctum')->group(function (): void {
             Route::get('auth/me', [AuthController::class, 'me']);
             Route::put('auth/password', [AuthController::class, 'password']);
+            Route::put('auth/profile', [AuthController::class, 'updateProfile']);
             Route::post('auth/logout', [AuthController::class, 'logout']);
 
             Route::get('onboarding/{onboarding}', [OnboardingController::class, 'show']);
@@ -44,6 +45,8 @@ foreach (config('tenancy.central_domains') as $domain) {
                 Route::apiResource('plans', PlanController::class)->parameters(['plans' => 'plan']);
                 Route::post('plans/{plan}/publish', [PlanController::class, 'publish']);
                 Route::put('plans/{plan}/features', [PlanController::class, 'features']);
+                Route::patch('plans/{plan}/status', [PlanController::class, 'status']);
+                Route::get('plans/{plan}/subscribers', [PlanController::class, 'subscribers']);
                 Route::put('tenants/{tenant}/subscription', [PlanController::class, 'replaceSubscription']);
                 Route::get('billing/providers/{provider}/config', [BillingController::class, 'providerConfig']);
                 Route::put('billing/providers/{provider}/config', [BillingController::class, 'upsertProviderConfig']);

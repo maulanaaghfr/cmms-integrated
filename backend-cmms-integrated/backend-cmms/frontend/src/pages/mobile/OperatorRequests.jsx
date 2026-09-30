@@ -1,171 +1,22 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Camera, Eye, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
-import { Plus, ChevronRight, X } from "lucide-react";
-import { useApp } from "../../store/store";
-import { Sheet, PhotoCapture } from "../../components/mobile-kit";
-import { listRequests, createRequest } from "../../lib/requests";
+import { createRequest, listRequests, uploadAttachment } from "../../lib/requests";
 import { listAssets } from "../../lib/assets";
 
-const PRIORITY = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-const statusTone = {
-  SUBMITTED: "bg-muted text-muted-foreground",
-  PENDING_APPROVAL: "bg-primary/10 text-primary",
-  APPROVED: "bg-accent/10 text-accent",
-  IN_PROGRESS: "bg-accent/10 text-accent",
-  CONVERTED: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]",
-  REJECTED: "bg-destructive/10 text-destructive",
-  CANCELLED: "bg-destructive/10 text-destructive",
-};
+const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+const statuses = { SUBMITTED: ["Pending", "bg-slate-100 text-slate-600"], PENDING_APPROVAL: ["Pending", "bg-slate-100 text-slate-600"], APPROVED: ["Diproses", "bg-blue-50 text-blue-700"], IN_PROGRESS: ["Dikerjakan", "bg-amber-50 text-amber-700"], CONVERTED: ["Selesai", "bg-emerald-50 text-emerald-700"], REJECTED: ["Ditolak", "bg-red-50 text-red-700"] };
+function Badge({ value, kind = "status" }) { const cls = kind === "priority" ? ({ CRITICAL: "border-red-200 bg-red-50 text-red-600", HIGH: "border-orange-200 bg-orange-50 text-orange-600", MEDIUM: "border-amber-200 bg-amber-50 text-amber-600", LOW: "border-emerald-200 bg-emerald-50 text-emerald-600" }[value] || "bg-slate-100 text-slate-600") : (statuses[value]?.[1] || "bg-slate-100 text-slate-600"); return <span className={`inline-flex rounded-full border border-transparent px-2 py-1 text-[10px] font-bold ${cls}`}>● {kind === "priority" ? value : statuses[value]?.[0] || value || "Pending"}</span>; }
 
 export default function OperatorRequests() {
-  const { user } = useApp();
-  const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ asset_id: "", title: "", description: "", priority: "MEDIUM" });
-  const [requests, setRequests] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [reqRes, assetsRes] = await Promise.all([listRequests(), listAssets()]);
-      setRequests(reqRes.data || []);
-      setAssets(assetsRes.data || []);
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const [params, setParams] = useSearchParams(); const [requests, setRequests] = useState([]); const [assets, setAssets] = useState([]); const [loading, setLoading] = useState(true); const [q, setQ] = useState(""); const [tab, setTab] = useState("ALL"); const [form, setForm] = useState({ title: "", description: "", asset_id: "", location: "", priority: "MEDIUM" }); const [saving, setSaving] = useState(false); const [photos, setPhotos] = useState([]); const fileInputRef = useRef(null); const createOpen = params.get("create") === "1";
+  const load = useCallback(async () => { setLoading(true); try { const [r, a] = await Promise.all([listRequests(), listAssets()]); setRequests(r.data || []); setAssets(a.data || []); } catch { /* TODO: butuh data dari backend */ } finally { setLoading(false); } }, []);
   useEffect(() => { load(); }, [load]);
-
-  const submit = async () => {
-    if (!form.title.trim() || !form.asset_id) {
-      toast.error("Deskripsi & peralatan wajib diisi.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await createRequest({
-        asset_id: form.asset_id,
-        title: form.title.trim(),
-        description: form.description || form.title.trim(),
-        priority: form.priority,
-      });
-      toast.success("Permintaan terkirim!");
-      setForm({ asset_id: "", title: "", description: "", priority: "MEDIUM" });
-      setFormOpen(false);
-      load();
-    } catch (err) {
-      toast.error(err.message || "Gagal mengirim permintaan.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-extrabold text-foreground sm:text-2xl">Permintaan Saya</h1>
-        <button
-          onClick={() => setFormOpen(true)}
-          className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:brightness-105 active:scale-95 sm:px-4 sm:text-sm"
-        >
-          <Plus className="h-3.5 w-3.5" /> Baru
-        </button>
-      </div>
-
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-        {loading && [0, 1, 2].map((i) => <div key={i} className="h-[76px] animate-pulse rounded-2xl border border-border bg-muted/50 sm:col-span-1" />)}
-        {!loading && requests.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">Belum ada permintaan.</div>
-        )}
-        {requests.map((r) => (
-          <div key={r.id} className="rounded-2xl border border-border bg-card p-4 soft-card transition hover:border-primary/20 hover:shadow-md">
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">{r.title}</span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusTone[r.status] || "bg-muted text-muted-foreground"}`}>{r.status}</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{r.request_number} · {r.priority}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Sheet open={formOpen} onClose={() => setFormOpen(false)} title="Ajukan Permintaan Maintenance" size="lg">
-        <div className="space-y-3">
-          <Field label="Deskripsi Masalah">
-            <input
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="mis. Mesin berbunyi tidak normal"
-              className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </Field>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Peralatan">
-              <select
-                value={form.asset_id}
-                onChange={(e) => setForm({ ...form, asset_id: e.target.value })}
-                className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Pilih peralatan...</option>
-                {assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Tingkat Urgensi">
-              <div className="flex gap-1.5">
-                {PRIORITY.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setForm({ ...form, priority: p })}
-                    className={`flex-1 rounded-xl border py-2 text-[11px] font-semibold transition sm:text-xs ${form.priority === p ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40"}`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </div>
-
-          <Field label="Detail Tambahan">
-            <textarea
-              rows={3}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </Field>
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => setFormOpen(false)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border bg-background py-2.5 text-sm font-semibold text-muted-foreground transition hover:bg-muted/40"
-            >
-              <X className="h-4 w-4" /> Batal
-            </button>
-            <button
-              onClick={submit}
-              disabled={saving}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:opacity-60"
-            >
-              {saving ? "Mengirim..." : "Kirim Permintaan"}
-            </button>
-          </div>
-        </div>
-      </Sheet>
-    </div>
-  );
+  const rows = useMemo(() => requests.filter((r) => { const text = `${r.request_number} ${r.title} ${r.description} ${r.asset?.name || ""}`.toLowerCase(); return (!q || text.includes(q.toLowerCase())) && (tab === "ALL" || (tab === "DONE" ? ["CONVERTED", "COMPLETED"].includes(r.status) : r.status === tab)); }), [requests, q, tab]);
+  const submit = async (e) => { e.preventDefault(); if (!form.title.trim() || !form.asset_id) return toast.error("Deskripsi masalah dan peralatan wajib diisi."); setSaving(true); try { const res = await createRequest({ asset_id: form.asset_id, title: form.title.trim(), description: form.description || form.title.trim(), priority: form.priority, location: form.location || undefined }); const newId = res?.data?.request?.id; if (newId && photos.length) { for (const file of photos) { try { await uploadAttachment("REQUEST", newId, file, "REQUEST"); } catch (uploadErr) { toast.error("Sebagian foto gagal diunggah: " + (uploadErr.message || "")); } } } toast.success("Permintaan berhasil dikirim."); setForm({ title: "", description: "", asset_id: "", location: "", priority: "MEDIUM" }); setPhotos([]); setParams({}); load(); } catch (err) { toast.error(err.message || "Gagal mengirim permintaan."); } finally { setSaving(false); } };
+  if (createOpen) return <div className="mx-auto max-w-[1060px] pb-8"><button onClick={() => setParams({})} className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-600"><ArrowLeft className="h-4 w-4" /> Permintaan Saya</button><div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]"><form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><h1 className="text-xl font-extrabold text-slate-900">Ajukan Permintaan Maintenance</h1><p className="mt-1 text-xs text-slate-400">Lengkapi formulir berikut untuk mengajukan permintaan</p><div className="mt-7 space-y-5"><Field label="Deskripsi Masalah" required><textarea required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Jelaskan masalah secara singkat dan jelas..." rows={3} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Peralatan" required><select required value={form.asset_id} onChange={(e) => setForm({ ...form, asset_id: e.target.value })}><option value="">Pilih peralatan...</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field><Field label="Lokasi"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Pilih lokasi..." /></Field></div><Field label="Detail Tambahan"><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Informasi tambahan yang membantu teknisi..." rows={3} /></Field><div><p className="mb-2 text-xs font-semibold text-slate-700">Foto Dokumentasi</p><div className="flex flex-wrap gap-2">{photos.map((file, i) => <div key={i} className="relative h-20 w-20 overflow-hidden rounded-xl border border-slate-200"><img src={URL.createObjectURL(file)} className="h-full w-full object-cover" alt="preview" /><button type="button" onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))} className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white"><X className="h-3 w-3" /></button></div>)}{photos.length < 5 && <button type="button" onClick={() => fileInputRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-xl border border-dashed border-blue-300 text-blue-600"><Camera className="h-5 w-5" /><span className="text-[10px]">Foto</span></button>}</div><input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(e) => { const files = Array.from(e.target.files || []).slice(0, 5 - photos.length); setPhotos([...photos, ...files]); e.target.value = ""; }} /><p className="mt-2 text-[10px] text-slate-400">Maks. 5 foto</p></div></div><div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setParams({})} className="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-500">Batal</button><button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Mengirim..." : "✓ Kirim Permintaan"}</button></div></form><aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Tingkat Urgensi <span className="text-red-500">*</span></p><div className="mt-4 space-y-2">{priority.map((p) => <button type="button" key={p} onClick={() => setForm({ ...form, priority: p })} className={`w-full rounded-lg border p-3 text-left text-xs ${form.priority === p ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}><b className="block">● {p}</b><span className="mt-1 block text-[10px] text-slate-400">{p === "CRITICAL" ? "Darurat — tangani sekarang" : p === "HIGH" ? "Segera — berpengaruh ke produksi" : p === "MEDIUM" ? "Ditangani dalam beberapa hari" : "Tidak mendesak, dijadwal normal"}</span></button>)}</div></aside></div></div>;
+  const tabs = [["ALL", "Semua"], ["SUBMITTED", "Pending"], ["IN_PROGRESS", "Dikerjakan"], ["CONVERTED", "Selesai"], ["REJECTED", "Ditolak"]];
+  return <div className="mx-auto max-w-[1240px] pb-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Permintaan Saya</h1><p className="mt-1 text-xs text-slate-400">{requests.length} total permintaan</p></div><Link to="/requests?create=1" className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"><Plus className="h-4 w-4" /> Buat Permintaan Baru</Link></div><div className="mt-6 flex flex-col gap-3 lg:flex-row"><label className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 text-sm outline-none focus:border-blue-500" placeholder="Cari ID, masalah, atau peralatan..." /></label><div className="flex gap-2 overflow-x-auto pb-1">{tabs.map(([value, label]) => <button key={value} onClick={() => setTab(value)} className={`whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold ${tab === value ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{label} {value !== "ALL" && <span className="ml-1 opacity-70">{value === "DONE" ? "" : requests.filter((r) => r.status === value).length}</span>}</button>)}</div></div><div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="hidden overflow-x-auto md:block"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400"><tr>{["Request ID", "Deskripsi Masalah", "Peralatan", "Urgensi", "Tanggal", "Status", "Aksi"].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{rows.map((r) => <tr key={r.id} className="hover:bg-slate-50"><td className="px-4 py-4 font-mono font-semibold text-blue-600">{r.request_number || r.id}</td><td className="max-w-[220px] truncate px-4 py-4 text-slate-600">{r.title || r.description || "-"}</td><td className="px-4 py-4 text-slate-500">{r.asset?.name || r.asset_name || "-"}</td><td className="px-4 py-4"><Badge value={r.priority} kind="priority" /></td><td className="px-4 py-4 text-slate-400">{r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : "-"}</td><td className="px-4 py-4"><Badge value={r.status} /></td><td className="px-4 py-4"><Link to={`/requests/${r.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600"><Eye className="h-3.5 w-3.5" /> Detail</Link></td></tr>)}</tbody></table></div><div className="divide-y divide-slate-100 md:hidden">{rows.map((r) => <Link to={`/requests/${r.id}`} key={r.id} className="block p-4"><div className="flex justify-between gap-3"><div><p className="font-mono text-[10px] font-semibold text-blue-600">{r.request_number || r.id}</p><p className="mt-1 text-sm font-semibold text-slate-900">{r.title || r.description || "-"}</p></div><Badge value={r.status} /></div><p className="mt-2 text-xs text-slate-500">{r.asset?.name || r.asset_name || "-"} · <Badge value={r.priority} kind="priority" /></p></Link>)}</div>{loading && <p className="p-8 text-center text-xs text-slate-400">Memuat...</p>}{!loading && !rows.length && <p className="p-8 text-center text-xs text-slate-400">Tidak ada permintaan yang sesuai.</p>}<p className="border-t border-slate-100 px-4 py-3 text-[11px] text-slate-400">{rows.length} dari {requests.length} permintaan</p></div></div>;
 }
-
-function Field({ label, children }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold text-foreground">{label}</span>
-      {children}
-    </label>
-  );
-}
+function Field({ label, required, children }) { return <label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-700">{label} {required && <b className="text-red-500">*</b>}</span>{React.cloneElement(children, { className: "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" })}</label>; }

@@ -22,3 +22,26 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Frontend build artifacts & deps
+frontend/node_modules
+frontend/dist
+
+# Ad-hoc backup files made during manual edits
+*.bak
+*.bak-*
+*.backup
+*.backup-*
+
+# Tenant data, DB dumps, attachments — never belongs in git
+/storage/recovery
+/storage/tenant*
+
+# But keep Laravel's placeholder .gitignore files so empty folders survive
+!/storage/framework/.gitignore
+!/storage/framework/cache/.gitignore
+!/storage/framework/cache/data/.gitignore
+!/storage/framework/sessions/.gitignore
+!/storage/framework/testing/.gitignore
+!/storage/framework/views/.gitignore
+!/storage/logs/.gitignore

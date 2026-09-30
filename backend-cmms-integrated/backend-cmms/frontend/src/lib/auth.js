@@ -15,16 +15,18 @@
 // `tenant_memberships_role_check` constraint and permission logic first —
 // this file is the only place the mapping needs to change afterwards.
 import { apiCentral, apiTenant, getToken, setToken, getActiveTenantDomain, setActiveTenantDomain } from "./api";
-import { getMyTenantUserOnDomain } from "./organization";
 
 export const BACKEND_TO_FRONTEND_ROLE = {
   COMPANY_ADMIN: "company_admin",
   MANAGER: "manager",
-  SUPERVISOR: "supervisor",
+  SUPERVISOR: "manager",
   TECHNICIAN: "technician",
   OPERATOR: "operator",
-  VIEWER: "view_only",
+  VENDOR: "vendor",
+  WAREHOUSE: "warehouse",
+  VIEWER: "operator",
 };
+
 
 function mapMembership(m) {
   return {
@@ -45,32 +47,23 @@ function mapMembership(m) {
  * `auth/me` returns the central `users.id`, while work-order assignments use
  * `tenant_users.id`.  Those IDs intentionally differ, so UI permission checks
  * must never compare an assignment to `apiUser.id`.
- *
- * FIX (2026-09-04): this used to call GET /users (paginated, scoped by
- * TenantScope::tenantUsers()) and search the page for a row matching the
- * signed-in user's central_user_id/email. That scope filters TECHNICIAN
- * users by TEAM membership, not by primary_site_id — so a technician who
- * had been correctly assigned work orders, but hadn't been added to any
- * team yet, got an EMPTY list back and could never find themselves in it.
- * The result: `tenantUserId` silently ended up `null` for that session,
- * which broke every `work_order.current_assignee_id === user.tenantUserId`
- * check across the technician UI (dashboard counts, "assigned to me"
- * filters, action buttons on a work order's detail view) — even though
- * the work order was assigned to them correctly in the database.
- *
- * Now this calls GET /users/me instead, a dedicated endpoint that always
- * returns the caller's own tenant_user row directly (see
- * OrganizationController::me() on the backend), with zero dependency on
- * team/site scoping. This also makes it more reliable in general: the old
- * approach could also silently fail to find a match once a tenant had more
- * technicians than fit on a single page of results.
  */
 async function resolveTenantUserId(apiUser, membership) {
   if (!membership?.domain) return null;
+  // Vendor accounts do not need the company user directory to render their
+  // portal. Team-management may not be included in the vendor's plan.
+  if (["VENDOR", "PROVIDER"].includes(String(membership.roleKey || "").toUpperCase())) return null;
 
   try {
-    const response = await getMyTenantUserOnDomain(membership.domain);
-    return response?.data?.id || null;
+    const response = await apiTenant(membership.domain, "/users", {
+      params: { per_page: 100 },
+    });
+    const tenantUser = (response?.data || []).find(
+      (candidate) =>
+        candidate.central_user_id === apiUser.id ||
+        candidate.email?.toLowerCase() === apiUser.email?.toLowerCase()
+    );
+    return tenantUser?.id || null;
   } catch {
     // A user can sign in even when the users feature is unavailable. Pages
     // should simply hide actions that require a tenant-local identity.
@@ -87,6 +80,7 @@ async function buildSessionUser(apiUser, membership) {
     tenantUserId,
     name: apiUser.full_name,
     email: apiUser.email,
+    phone: apiUser.phone || "",
     role: isSuperAdmin ? "super_admin" : membership?.frontendRole || "view_only",
     company: membership?.tenantName || "",
     status: apiUser.status,
@@ -129,15 +123,50 @@ export async function apiLogin(email, password) {
     }
     if (activeMemberships.length === 1) {
       setActiveTenantDomain(activeMemberships[0].domain);
-      return { ok: true, user: await buildSessionUser(user, activeMemberships[0]), memberships };
+      return {
+        ok: true,
+        user: await buildSessionUser(user, activeMemberships[0]),
+        memberships,
+        token,
+        tenantDomain: activeMemberships[0].domain,
+      };
     }
-    // Multiple active tenants — caller (Login page) should prompt the user
-    // to pick one, then call selectTenant().
+
+    // Technicians are assigned to a company by its administrator. They should
+    // not be asked to choose a company at login. Prefer a technician
+    // membership; if there are several, prefer the current host and otherwise
+    // use the first active technician membership returned by the API.
+    const technicianMemberships = activeMemberships.filter(
+      (membership) => String(membership.roleKey || "").toUpperCase() === "TECHNICIAN"
+    );
+    if (technicianMemberships.length) {
+      const currentHost = typeof window !== "undefined" ? window.location.hostname : "";
+      const selected =
+        technicianMemberships.find((membership) => membership.domain === currentHost) ||
+        technicianMemberships[0];
+      setActiveTenantDomain(selected.domain);
+      return {
+        ok: true,
+        user: await buildSessionUser(user, selected),
+        memberships,
+        token,
+        tenantDomain: selected.domain,
+      };
+    }
+
+    // Other multi-company accounts still choose a company explicitly.
     return { ok: true, needsTenantSelection: true, user, memberships };
   } catch (err) {
     setToken(null);
-    return { ok: false, error: err.message || "Gagal masuk. Coba lagi." };
+    return { ok: false, error: err.message || "Gagal masuk. Coba lagi.", errorCode: err.code };
   }
+}
+
+export function resendVerification(email) {
+  return apiCentral("/onboarding/resend-verification", {
+    method: "POST",
+    body: { email },
+  });
 }
 
 /** Finish login after the user picked a tenant from `needsTenantSelection`. */
@@ -186,28 +215,24 @@ export function requestPasswordReset(email) {
   return apiCentral("/auth/forgot-password", { method: "POST", body: { email } });
 }
 
-/**
- * Change the signed-in user's password. Used for the mandatory
- * "change your temporary password" screen (see ChangePassword.jsx) as well
- * as any future voluntary "change password" settings form — both hit the
- * same PUT /auth/password endpoint, which also clears must_change_password
- * server-side on success.
- */
-export function apiChangePassword({ currentPassword, password, passwordConfirmation }) {
-  return apiCentral("/auth/password", {
-    method: "PUT",
-    body: {
-      current_password: currentPassword,
-      password,
-      password_confirmation: passwordConfirmation,
-    },
-  });
-}
-
 export function resetPasswordWithToken({ email, token, password, passwordConfirmation }) {
   return apiCentral("/auth/reset-password", {
     method: "POST",
     body: { email, token, password, password_confirmation: passwordConfirmation },
+  });
+}
+
+export function updateProfile({ fullName, phone }) {
+  return apiCentral("/auth/profile", {
+    method: "PUT",
+    body: { full_name: fullName, phone: phone || null },
+  });
+}
+
+export function changePassword({ currentPassword, password, passwordConfirmation }) {
+  return apiCentral("/auth/password", {
+    method: "PUT",
+    body: { current_password: currentPassword, password, password_confirmation: passwordConfirmation },
   });
 }
 

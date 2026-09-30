@@ -12,6 +12,8 @@ import { apiCentral } from "../../lib/api";
 const prettyStatus = (s) =>
   String(s || "-").split("_").map((p) => p.charAt(0) + p.slice(1).toLowerCase()).join(" ");
 
+const formatDate = (value) => value ? new Date(value).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
+
 export default function Companies() {
   const { user } = useApp();
   const [loading, setLoading] = useState(true);
@@ -67,6 +69,15 @@ export default function Companies() {
       ),
     },
     { key: "status", header: "Status", render: (r) => <Pill tone={statusTone(prettyStatus(r.status))}>{prettyStatus(r.status)}</Pill> },
+    {
+      key: "plan", header: "Paket", render: (r) => r.subscription ? (
+        <div>
+          <div className="text-sm font-medium text-foreground">{r.subscription.plan_name}</div>
+          <div className="text-xs text-muted-foreground">{prettyStatus(r.subscription.status)}</div>
+        </div>
+      ) : <span className="text-xs text-muted-foreground">Belum berlangganan</span>,
+    },
+    { key: "period_end", header: "Berlaku Sampai", render: (r) => <span className="text-sm text-foreground">{formatDate(r.subscription?.current_period_end)}</span> },
     { key: "db_status", header: "Database", render: (r) => <Pill tone={r.database_status === "READY" ? "success" : "warning"}>{r.database_status || "-"}</Pill> },
     { key: "domain", header: "Domain", render: (r) => <span className="font-mono text-xs text-muted-foreground">{(r.domains || [])[0]?.domain || "-"}</span> },
     { key: "act", header: "", render: (r) => <IconButton onClick={(e) => { e.stopPropagation(); setView(r); }}><Eye className="h-4 w-4" /></IconButton> },
@@ -107,6 +118,32 @@ export default function Companies() {
               <div className="font-display text-lg font-bold text-foreground">{view.name}</div>
               <Pill tone={statusTone(prettyStatus(view.status))}>{prettyStatus(view.status)}</Pill>
             </div>
+
+            {view.subscription ? (
+              <div className="rounded-xl bg-muted/40 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-display text-base font-bold text-foreground">{view.subscription.plan_name}</div>
+                  <Pill tone={view.subscription.status === "ACTIVE" ? "success" : "muted"}>{prettyStatus(view.subscription.status)}</Pill>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  {[
+                    ["Harga", idr(view.subscription.price) + (view.subscription.billing_period === "ANNUAL" ? "/thn" : "/bln")],
+                    ["Periode Billing", view.subscription.billing_period === "ANNUAL" ? "Tahunan" : "Bulanan"],
+                    ["Berlaku Sampai", formatDate(view.subscription.current_period_end)],
+                    ["Auto-renew", view.subscription.auto_renew ? "Aktif" : "Nonaktif"],
+                    ...(view.subscription.trial_ends_at ? [["Trial Berakhir", formatDate(view.subscription.trial_ends_at)]] : []),
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <div className="text-xs text-muted-foreground">{k}</div>
+                      <div className="font-medium text-foreground">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Company ini belum memiliki langganan aktif.</p>
+            )}
+
             <div className="grid grid-cols-2 gap-3 text-sm">
               {[
                 ["Kode", view.code], ["Industri", view.industry || "-"],

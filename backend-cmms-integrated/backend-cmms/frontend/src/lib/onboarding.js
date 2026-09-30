@@ -14,3 +14,10 @@ export function registerOnboarding(payload) {
     headers: { "Idempotency-Key": idempotencyKey },
   });
 }
+
+export function verifyEmail(token) {
+  return apiCentral("/onboarding/verify-email", {
+    method: "POST",
+    body: { token },
+  });
+}

@@ -16,7 +16,7 @@ class PlanLimitService
             ->join('plans', 'plans.id', '=', 'subscriptions.plan_id')
             ->where('subscriptions.tenant_id', tenant('id'))
             ->whereIn('subscriptions.status', ['TRIAL', 'ACTIVE', 'GRACE'])
-            ->select('plans.max_users', 'plans.max_assets', 'plans.max_sites')
+            ->select('subscriptions.features_snapshot', 'subscriptions.max_users_snapshot', 'subscriptions.max_assets_snapshot', 'subscriptions.max_sites_snapshot', 'plans.max_users', 'plans.max_assets', 'plans.max_sites')
             ->first();
         if (! $subscription) {
             throw new ApiException('SUBSCRIPTION_REQUIRED', 'An active subscription is required.', 402);
@@ -34,7 +34,7 @@ class PlanLimitService
         }
 
         [$column, $table, $label, $activeColumn, $activeValue] = $limitedResources[$resource];
-        $limit = $subscription->{$column};
+        $limit = $subscription->features_snapshot !== null ? $subscription->{$column."_snapshot"} : $subscription->{$column};
         if ($limit !== null && DB::table($table)->where($activeColumn, $activeValue)->count() >= $limit) {
             throw new ApiException('PLAN_LIMIT_REACHED', "The subscription limit for {$label} has been reached.", 409, [
                 'resource' => $resource,

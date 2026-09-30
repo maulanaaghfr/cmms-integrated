@@ -6,47 +6,110 @@ export function AssetQr({ value, size = 180, className = "" }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
     let alive = true;
-    QRCode.toDataURL(value || "", { width: size, margin: 1, errorCorrectionLevel: "M" }).then((url) => alive && setSrc(url));
+    QRCode.toDataURL(value || "", { width: size, margin: 4, errorCorrectionLevel: "M" }).then((url) => alive && setSrc(url));
     return () => { alive = false; };
   }, [value, size]);
   return src ? <img src={src} alt="QR Asset" width={size} height={size} className={className} /> : <div className={`grid place-items-center bg-muted text-xs text-muted-foreground ${className}`} style={{ width: size, height: size }}>Membuat QR...</div>;
 }
 
-export async function printAssetQrLabel({ value, title, code }) {
-  const image = await QRCode.toDataURL(value || "", { width: 600, margin: 2, errorCorrectionLevel: "H" });
-  const safe = (input) => String(input || "").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  const popup = window.open("", "_blank", "width=820,height=980");
-  if (!popup) return false;
-  popup.document.write(`<html><head><title>QR Asset ${safe(code || title)}</title><style>@page{size:80mm 80mm;margin:0}*{box-sizing:border-box}html,body{width:80mm;height:80mm;margin:0;padding:0;background:#fff}body{font-family:Arial,sans-serif}.sheet{width:80mm;height:80mm;display:flex;align-items:center;justify-content:center}.qr-label{width:80mm;height:80mm;aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm;padding:4mm;text-align:center;border:0.35mm solid #222;background:#fff}.qr-label img{display:block;width:54mm;height:54mm;aspect-ratio:1/1;object-fit:contain;flex:none}.qr-label h2{width:70mm;margin:0;font-size:11pt;line-height:1.1;font-weight:700;overflow-wrap:anywhere;word-break:break-word}.qr-label p{width:70mm;margin:0;font-size:8.5pt;line-height:1.1;font-family:monospace;overflow-wrap:anywhere;word-break:break-word}@media print{html,body,.sheet{width:80mm;height:80mm}.qr-label{break-inside:avoid}}</style></head><body><main class="sheet"><div class="qr-label"><img src="${image}" alt="QR Asset"/><h2>${safe(title || "Asset")}</h2><p>${safe(code)}</p></div></main><script>window.onload=()=>{window.print();}</script></body></html>`);
-  popup.document.close();
-  return true;
+function safeFileName(name) {
+  return String(name || "qr").trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "qr";
 }
 
-/**
- * Downloads the asset QR as a real .png file directly (no print dialog
- * involved). This avoids the common mistake of using the browser's print
- * popup with "Save as PDF" and manually renaming the result to .png, which
- * produces a file that LOOKS like a PNG by name but is actually a PDF and
- * cannot be decoded by any image reader/scanner.
- */
-export async function downloadAssetQrImage({ value, code, title }) {
-  const image = await QRCode.toDataURL(value || "", { width: 900, margin: 2, errorCorrectionLevel: "H" });
+function triggerDownload(href, filename) {
   const link = document.createElement("a");
-  const safeName = String(code || title || "asset-qr").trim().replace(/[^a-zA-Z0-9_-]+/g, "-");
-  link.href = image;
-  link.download = `qr-${safeName || "asset"}.png`;
+  link.href = href;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
 }
 
-export function printBarcodeLabel({ value, title, code, unit }) {
+export async function downloadAssetQr({ value, code, format = "png" }) {
+  const safeName = safeFileName(code);
+  if (format === "svg") {
+    const svgString = await QRCode.toString(value || "", { type: "svg", width: 400, margin: 4, errorCorrectionLevel: "M" });
+    const blob = new Blob([svgString], { type: "image/svg+xml" });
+    triggerDownload(URL.createObjectURL(blob), `${safeName}-qr.svg`);
+    return;
+  }
+  const pngUrl = await QRCode.toDataURL(value || "", { width: 400, margin: 4, errorCorrectionLevel: "M" });
+  if (format === "png") {
+    triggerDownload(pngUrl, `${safeName}-qr.png`);
+    return;
+  }
+  // jpg: gambar ulang di atas kanvas putih karena JPG tidak mendukung transparansi
+  const img = new Image();
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = pngUrl; });
   const canvas = document.createElement("canvas");
-  JsBarcode(canvas, value, { format: "CODE128", width: 2, height: 70, displayValue: true, margin: 8 });
-  const image = canvas.toDataURL("image/png");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+  triggerDownload(canvas.toDataURL("image/jpeg", 1), `${safeName}-qr.jpg`);
+}
+
+function createBarcodeImage(value) {
+  const normalizedValue = String(value ?? "").trim();
+  if (!normalizedValue) return null;
+
+  const canvas = document.createElement("canvas");
+  JsBarcode(canvas, normalizedValue, {
+    format: "CODE128",
+    width: 3,
+    height: 120,
+    displayValue: true,
+    fontSize: 28,
+    margin: 16,
+    lineColor: "#111827",
+    background: "#ffffff",
+  });
+  return { image: canvas.toDataURL("image/png"), value: normalizedValue };
+}
+
+export function downloadBarcodeLabel({ value, code }) {
+  const barcode = createBarcodeImage(value);
+  if (!barcode) return false;
+
+  const safeName = String(code || barcode.value)
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "barcode";
+  const link = document.createElement("a");
+  link.href = barcode.image;
+  link.download = `${safeName}-barcode.png`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  return true;
+}
+
+export function printBarcodeLabel({ value, title, code, unit }) {
+  const barcode = createBarcodeImage(value);
+  if (!barcode) return false;
+  const { image, value: normalizedValue } = barcode;
   const popup = window.open("", "_blank", "width=480,height=360");
   if (!popup) return false;
-  popup.document.write(`<html><head><title>Label ${title || value}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:24px}.label{border:1px solid #111;padding:18px;display:inline-block;min-width:280px}img{max-width:100%}h2{font-size:18px;margin:0 0 8px}p{margin:4px 0;font-size:12px}</style></head><body><div class="label"><h2>${String(title || "Spare Part").replaceAll("<", "&lt;")}</h2><p>${String(code || "").replaceAll("<", "&lt;")} ${String(unit || "").replaceAll("<", "&lt;")}</p><img src="${image}" alt="Barcode"/><p>${String(value).replaceAll("<", "&lt;")}</p></div><script>window.onload=()=>{window.print();}</script></body></html>`);
+
+  const safeTitle = String(title || "Spare Part").replaceAll("<", "&lt;");
+  const safeCode = String(code || "").replaceAll("<", "&lt;");
+  const safeUnit = String(unit || "").replaceAll("<", "&lt;");
+  const safeValue = normalizedValue.replaceAll("<", "&lt;");
+
+  popup.document.write(`<html><head><title>Label ${safeTitle}</title><style>
+    @page { size: 50mm 30mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { width: 50mm; height: 30mm; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #fff; color: #111; }
+    .label { width: 50mm; height: 30mm; padding: 2mm; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+    h2 { max-width: 46mm; margin: 0 0 0.8mm; font-size: 3.2mm; line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta, .value { max-width: 46mm; margin: 0; font-size: 2.4mm; line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    img { display: block; width: 46mm; height: 19mm; object-fit: contain; image-rendering: auto; margin: 0.8mm 0; }
+    @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  </style></head><body><div class="label"><h2>${safeTitle}</h2><p class="meta">${safeCode} ${safeUnit}</p><img src="${image}" alt="Barcode"/><p class="value">${safeValue}</p></div><script>window.onload=()=>{window.focus();window.print();}</script></body></html>`);
   popup.document.close();
   return true;
 }
+

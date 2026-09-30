@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Star, Truck, FileText, CheckCircle2, Trash2, Pencil } from "lucide-react";
+import { Plus, Star, Truck, FileText, CheckCircle2, Trash2, Pencil, Eye, XCircle, PackageCheck, CalendarDays, MessageSquare, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "../store/store";
 import {
@@ -12,11 +12,11 @@ import {
 } from "../lib/procurement";
 import { listSpareParts, listWarehouses } from "../lib/inventory";
 
-const PO_STATUSES = ["DRAFT", "SENT", "CONFIRMED", "PARTIALLY_RECEIVED", "RECEIVED", "INVOICED", "PAID", "CANCELLED"];
+const PO_STATUSES = ["DRAFT", "SENT", "CONFIRMED", "SHIPPED", "PARTIALLY_RECEIVED", "RECEIVED", "INVOICED", "PAID", "REJECTED", "CANCELLED"];
 const PO_STATUS_LABEL = {
-  DRAFT: "Draft", SENT: "Sent", CONFIRMED: "Confirmed",
+  DRAFT: "Draft", SENT: "Sent", CONFIRMED: "Confirmed", SHIPPED: "Shipped",
   PARTIALLY_RECEIVED: "Partially Received", RECEIVED: "Received",
-  INVOICED: "Invoiced", PAID: "Paid", CANCELLED: "Cancelled",
+  INVOICED: "Invoiced", PAID: "Paid", REJECTED: "Rejected", CANCELLED: "Cancelled",
 };
 const VENDOR_TYPES = ["Sparepart Supplier", "Contractor", "Service Provider"];
 const idr = (n) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
@@ -27,9 +27,111 @@ const blankVendor = {
   rating: 4, on_time_rate: 80, quality_rate: 80, price_score: 70,
 };
 
-export default function Procurement() {
+const vendorStatus = (status) => ({
+  DRAFT: ["Draft", "muted"], SENT: ["Menunggu konfirmasi", "warning"],
+  CONFIRMED: ["Dikonfirmasi", "primary"], SHIPPED: ["Dikirim", "accent"],
+  PARTIALLY_RECEIVED: ["Sebagian diterima", "warning"], RECEIVED: ["Selesai", "success"],
+  INVOICED: ["Ditagihkan", "accent"], PAID: ["Lunas", "success"],
+  REJECTED: ["Ditolak", "danger"], CANCELLED: ["Dibatalkan", "danger"],
+}[status] || [status || "-", "muted"]);
+
+function VendorStatus({ status }) {
+  const [label, tone] = vendorStatus(status);
+  return <Pill tone={tone}>{label}</Pill>;
+}
+
+function VendorProcurement() {
+  const { user } = useApp();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("ALL");
+  const [selected, setSelected] = useState(null);
+  const [action, setAction] = useState(null);
+  const [form, setForm] = useState({ expected_date: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await listPurchaseOrders({ per_page: 100 });
+      setOrders(res.data || []);
+    } catch (err) {
+      toast.error(err.message || "Gagal memuat purchase order.");
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const visible = useMemo(() => orders.filter((po) => {
+    const matchesQuery = !query || `${po.po_number} ${po.vendor_name} ${(po.items || []).map((i) => i.part_name).join(" ")}`.toLowerCase().includes(query.toLowerCase());
+    const matchesStatus = filter === "ALL" || po.status === filter;
+    return matchesQuery && matchesStatus;
+  }), [orders, query, filter]);
+  const spend = orders.reduce((sum, po) => sum + Number(po.total_cost || 0), 0);
+  const pending = orders.filter((po) => po.status === "SENT").length;
+  const unreadLabel = user?.name || "Vendor";
+
+  const openAction = (po, type) => {
+    setSelected(po);
+    setAction(type);
+    setForm({ expected_date: po.expected_date || "", notes: po.notes || "" });
+  };
+  const saveAction = async () => {
+    if (!selected) return;
+    if (action === "reject" && !form.notes.trim()) return toast.error("Alasan penolakan wajib diisi.");
+    setSaving(true);
+    try {
+      const status = action === "accept" ? "CONFIRMED" : action === "ship" ? "SHIPPED" : "REJECTED";
+      await updatePurchaseOrder(selected.id, { status, expected_date: form.expected_date || null, notes: form.notes || null });
+      toast.success(action === "reject" ? "Purchase order ditolak." : action === "ship" ? "Status pengiriman diperbarui." : "Purchase order dikonfirmasi.");
+      setSelected(null); setAction(null); await load();
+    } catch (err) { toast.error(err.message || "Purchase order tidak dapat diperbarui."); }
+    finally { setSaving(false); }
+  };
+
+  return <Reveal><div className="space-y-5">
+    <div className="mb-6 flex flex-col gap-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Vendor Portal</p>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div><h1 className="font-display text-2xl font-extrabold tracking-tight text-[#172033]">Procurement</h1><p className="mt-1 text-sm text-muted-foreground">Kelola purchase order dan pengiriman milik Anda.</p></div>
+        <Button variant="ghost" onClick={() => toast.success("Laporan vendor siap diunduh.")}><Download className="h-4 w-4" /> Export</Button>
+      </div>
+    </div>
+    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <StatCard icon={FileText} label="Total Belanja" value={idr(spend)} hint={`${orders.length} purchase order`} tone="primary" />
+      <StatCard icon={CalendarDays} label="Menunggu Konfirmasi" value={pending} hint="Perlu tindakan Anda" tone="warning" />
+      <StatCard icon={PackageCheck} label="Pesanan Selesai" value={orders.filter((po) => ["RECEIVED", "PAID"].includes(po.status)).length} hint="Sudah diterima gudang" tone="success" />
+    </div>
+    <Card className="mb-5 overflow-hidden p-4 sm:p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h2 className="font-display text-sm font-bold">Alur Kerja Vendor</h2><span className="text-xs text-muted-foreground">{unreadLabel}</span></div>
+      <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+        {[['1', 'Purchase Order', 'Terima PO'], ['2', 'Konfirmasi', 'Terima / tolak'], ['3', 'Pengiriman', 'Kirim barang'], ['4', 'Selesai', 'Warehouse verifikasi']].map(([n, title, desc]) => <div key={n} className="relative rounded-xl bg-slate-50 p-3"><span className="mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-primary">{n}</span><p className="mt-2 text-xs font-bold">{title}</p><p className="mt-1 text-[10px] text-muted-foreground">{desc}</p></div>)}
+      </div>
+    </Card>
+    <Card className="overflow-hidden p-0">
+      <div className="flex flex-col gap-3 border-b border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"><div><h2 className="font-display text-sm font-bold">Purchase Orders</h2><p className="mt-1 text-xs text-muted-foreground">Hanya PO yang ditujukan kepada akun vendor Anda.</p></div><div className="flex flex-col gap-2 sm:flex-row"><div className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari PO atau item..." className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-xs outline-none focus:border-primary sm:w-52" /></div><select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary"><option value="ALL">Semua status</option><option value="SENT">Menunggu</option><option value="CONFIRMED">Dikonfirmasi</option><option value="SHIPPED">Dikirim</option><option value="RECEIVED">Selesai</option><option value="REJECTED">Ditolak</option></select></div></div>
+      <div className="divide-y divide-border/60">{loading ? <p className="p-8 text-center text-sm text-muted-foreground">Memuat purchase order...</p> : visible.length ? visible.map((po) => <div key={po.id} className="flex flex-col gap-3 p-4 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:p-5"><button className="min-w-0 text-left" onClick={() => setSelected(po)}><p className="font-mono text-xs font-bold text-primary">{po.po_number || po.id}</p><p className="mt-1 truncate text-sm font-semibold">{(po.items || []).map((i) => i.part_name).join(", ") || "Purchase order"}</p><p className="mt-1 text-xs text-muted-foreground">{(po.items || []).reduce((n, i) => n + Number(i.quantity || 0), 0)} item · Jatuh tempo {po.expected_date ? new Date(po.expected_date).toLocaleDateString("id-ID") : "belum ditentukan"}</p></button><div className="flex items-center justify-between gap-3 sm:justify-end"><div className="text-right"><p className="text-sm font-bold">{idr(po.total_cost)}</p><VendorStatus status={po.status} /></div><div className="flex gap-1.5">{po.status === "SENT" && <><IconButton title="Terima PO" onClick={() => openAction(po, "accept")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></IconButton><IconButton title="Tolak PO" onClick={() => openAction(po, "reject")}><XCircle className="h-4 w-4 text-red-500" /></IconButton></>}{po.status === "CONFIRMED" && <IconButton title="Tandai dikirim" onClick={() => openAction(po, "ship")}><Truck className="h-4 w-4 text-primary" /></IconButton>}<IconButton title="Lihat detail" onClick={() => setSelected(po)}><Eye className="h-4 w-4" /></IconButton></div></div></div>) : <div className="p-10 text-center"><PackageCheck className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2 text-sm font-semibold">Belum ada purchase order</p><p className="mt-1 text-xs text-muted-foreground">PO dari perusahaan akan muncul di sini.</p></div>}</div>
+    </Card>
+    <Modal open={Boolean(action)} onClose={() => { setAction(null); setSelected(null); }} title={action === "reject" ? "Tolak Purchase Order" : action === "ship" ? "Konfirmasi Pengiriman" : "Konfirmasi Purchase Order"}>
+      {selected ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><p className="font-mono text-xs font-bold text-primary">{selected.po_number}</p><p className="mt-1 text-sm font-semibold">{(selected.items || []).map((i) => i.part_name).join(", ")}</p><p className="mt-2 text-lg font-extrabold">{idr(selected.total_cost)}</p></div>
+          {action !== "reject" ? <Field label="Estimasi tanggal pengiriman" required={action === "accept"}><Input type="date" value={form.expected_date} onChange={(e) => setForm({ ...form, expected_date: e.target.value })} /></Field> : null}
+          <Field label={action === "reject" ? "Alasan penolakan" : "Catatan"}><Textarea rows={4} placeholder={action === "reject" ? "Jelaskan alasan penolakan..." : "Tambahkan catatan untuk tim procurement..."} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => { setAction(null); setSelected(null); }}>Batal</Button><Button variant={action === "reject" ? "danger" : "primary"} disabled={saving || (action === "accept" && !form.expected_date)} onClick={saveAction}>{saving ? "Menyimpan..." : action === "reject" ? "Tolak PO" : action === "ship" ? "Konfirmasi Dikirim" : "Konfirmasi"}</Button></div>
+        </div>
+      ) : null}
+    </Modal>
+    <Modal open={!!selected && !action} onClose={() => setSelected(null)} title={selected ? `Detail ${selected.po_number}` : "Detail Purchase Order"}>
+      {selected && <div className="space-y-4"><div className="flex items-center justify-between"><VendorStatus status={selected.status} /><span className="text-xs text-muted-foreground">{selected.expected_date ? new Date(selected.expected_date).toLocaleDateString("id-ID") : "Tanpa tanggal"}</span></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-muted-foreground">Total nilai PO</p><p className="mt-1 text-2xl font-extrabold">{idr(selected.total_cost)}</p></div><div className="space-y-2">{(selected.items || []).map((item) => <div key={item.id} className="flex justify-between gap-3 border-b border-border/60 pb-2 text-sm"><span>{item.part_name}<span className="ml-2 text-xs text-muted-foreground">× {item.quantity}</span></span><span className="font-semibold">{idr(item.total_price || item.quantity * item.unit_price)}</span></div>)}</div>{selected.notes && <div className="rounded-xl border p-3 text-sm text-muted-foreground"><MessageSquare className="mb-1 h-4 w-4" />{selected.notes}</div>}{selected.status === "SENT" && <div className="flex flex-col gap-2 sm:flex-row"><Button className="flex-1" onClick={() => openAction(selected, "accept")}>Terima PO</Button><Button variant="danger" className="flex-1" onClick={() => openAction(selected, "reject")}>Tolak PO</Button></div>}{selected.status === "CONFIRMED" && <Button className="w-full" onClick={() => openAction(selected, "ship")}><Truck className="h-4 w-4" /> Tandai Dikirim</Button>}</div>}
+    </Modal>
+  </div></Reveal>;
+}
+
+function ProcurementManager() {
   const { user } = useApp();
   const canEdit = ["company_admin", "manager"].includes(user?.role);
+  const vendorCanUpdate = user?.role === "vendor";
 
   const [tab, setTab] = useState("po");
   const [loading, setLoading] = useState(true);
@@ -192,6 +294,16 @@ export default function Procurement() {
     }
   };
 
+  const confirmVendorOrder = async (po) => {
+    try {
+      await updatePurchaseOrder(po.id, { status: po.status === "SENT" ? "CONFIRMED" : "PARTIALLY_RECEIVED" });
+      toast.success(`${po.po_number} diperbarui.`);
+      load();
+    } catch (err) {
+      toast.error(err.message || "Purchase order tidak dapat diperbarui.");
+    }
+  };
+
   const confirmReceipt = async () => {
     if (!receipt?.warehouse_id) return toast.error("Pilih gudang penerimaan.");
     setSaving(true);
@@ -274,19 +386,15 @@ export default function Procurement() {
     { key: "total_cost", header: "Total", render: (p) => idr(p.total_cost) },
     { key: "status", header: "Status", render: (p) => <Pill tone={statusTone(PO_STATUS_LABEL[p.status] || p.status)}>{PO_STATUS_LABEL[p.status] || p.status}</Pill> },
     {
-      key: "act", header: "", render: (p) => canEdit && (
+      key: "act", header: "", render: (p) => (canEdit || vendorCanUpdate) && (
         <div className="flex justify-end gap-1.5">
-          {p.status !== "PAID" && p.status !== "CANCELLED" && (
+          {canEdit && p.status !== "PAID" && p.status !== "CANCELLED" && (
             <IconButton onClick={(e) => { e.stopPropagation(); advanceStatus(p); }} title="Lanjutkan status">
               <CheckCircle2 className="h-4 w-4" />
             </IconButton>
           )}
-          <IconButton onClick={(e) => { e.stopPropagation(); setPoForm({ ...p, items: p.items || [] }); }}>
-            <Pencil className="h-4 w-4" />
-          </IconButton>
-          <IconButton onClick={(e) => { e.stopPropagation(); setDel({ coll: "purchaseOrders", id: p.id, label: p.po_number }); }} className="hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </IconButton>
+          {vendorCanUpdate && ["SENT", "CONFIRMED"].includes(p.status) && <IconButton onClick={(e) => { e.stopPropagation(); confirmVendorOrder(p); }} title="Konfirmasi status"><CheckCircle2 className="h-4 w-4" /></IconButton>}
+          {canEdit && <><IconButton onClick={(e) => { e.stopPropagation(); setPoForm({ ...p, items: p.items || [] }); }}><Pencil className="h-4 w-4" /></IconButton><IconButton onClick={(e) => { e.stopPropagation(); setDel({ coll: "purchaseOrders", id: p.id, label: p.po_number }); }} className="hover:text-destructive"><Trash2 className="h-4 w-4" /></IconButton></>}
         </div>
       ),
     },
@@ -295,8 +403,8 @@ export default function Procurement() {
   return (
     <Reveal>
       <PageHeader
-        title="Vendor & Purchase Order"
-        subtitle="Kelola vendor, quotation, dan siklus pembelian sparepart."
+        title="Pengadaan (Purchase Order)"
+        subtitle={`${purchaseOrders.length} PO`}
         action={canEdit && (
           tab === "po"
             ? <Button onClick={() => setPoForm(blankPO())}><Plus className="h-4 w-4" /> Buat PO</Button>
@@ -505,6 +613,11 @@ export default function Procurement() {
       />
     </Reveal>
   );
+}
+
+export default function Procurement() {
+  const { user } = useApp();
+  return user?.role === "vendor" ? <VendorProcurement /> : <ProcurementManager />;
 }
 
 function Info({ label, value }) {

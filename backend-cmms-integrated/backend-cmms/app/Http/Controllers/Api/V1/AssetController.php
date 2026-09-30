@@ -76,7 +76,11 @@ class AssetController extends Controller
     public function show(Request $request, string $asset): mixed
     {
         $actor = $request->attributes->get('tenant_user');
-        $row = $this->scope->asset($actor, $asset);
+        $row = DB::table('assets')->where('id', $asset)->first();
+
+        if (! $row) {
+            throw new ApiException('ASSET_NOT_FOUND', 'Asset was not found in this tenant.', 404);
+        }
         $row->operators = DB::table('asset_operator_assignments')->join('tenant_users', 'tenant_users.id', '=', 'asset_operator_assignments.tenant_user_id')->where('asset_operator_assignments.asset_id', $asset)->where('asset_operator_assignments.is_active', true)->select('asset_operator_assignments.*', 'tenant_users.full_name', 'tenant_users.email')->get();
         $row->work_orders = $this->scope->workOrders($actor)->where('asset_id', $asset)->orderByDesc('created_at')->limit(20)->get();
 
